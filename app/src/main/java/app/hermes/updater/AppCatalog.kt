@@ -25,6 +25,9 @@ object AppCatalog {
     "98c61591c05d6fb988c1cbcfc7fbd6bb6b39e062a5443db504855bcf12e29483"
   private const val JELLYAMP_PIN =
     "775d5032067a6686fbdaac577b29fef9e6d025e1cb4c35411b3879d849178d14"
+  private const val HERMES_PIN =
+    "241d8ec55894b9b9c2f6ea4e088dae8c4b8220249090d610b63d01029d1bb03c"
+
   private const val VELA_PIN =
     "3f6aaaf0049ee820cecd478e43cda23041a6179371bfa870a196c6390fdb4aa3"
 
@@ -60,8 +63,8 @@ object AppCatalog {
       packageName = "app.hermes.updater",
       repo = "demongroker/hermes",
       assetPrefix = "hermes-",
-      // Pinned by the release workflow (see .github/workflows/release.yml notes).
-      certPins = emptyList(),
+      // Pinned from the first signed release (v0.1.0). Hermes can now update itself.
+      certPins = listOf(HERMES_PIN),
     ),
   )
 

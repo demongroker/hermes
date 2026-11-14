@@ -35,10 +35,20 @@ class AppCatalogTest {
   }
 
   @Test
-  fun hermesIsUnpinnedUntilItsFirstRelease() {
-    // Fail-closed: an unpinned app can be listed and checked but never installed.
-    assertTrue(AppCatalog.byId("hermes")!!.certPins.isEmpty())
+  fun hermesIsPinnedFromItsFirstSignedRelease() {
+    // Hermes is now pinned like the rest: v0.1.0's certificate digest.
+    val hermes = AppCatalog.byId("hermes")!!
+    assertEquals(1, hermes.certPins.size)
+    assertEquals(64, hermes.certPins.single().length)
     assertNotNull(AppCatalog.byId("vela"))
+  }
+
+  @Test
+  fun everyAppIsPinned() {
+    // No app may ship unpinned: an empty pin list means installs are refused.
+    AppCatalog.apps.forEach { app ->
+      assertTrue("${app.displayName} has no signing pin", app.certPins.isNotEmpty())
+    }
   }
 
   @Test
