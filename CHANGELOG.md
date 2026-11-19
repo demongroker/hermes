@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3
+- Fixed: the "Hermes" title drew under the status bar (edge-to-edge on targetSdk 36) —
+  the layout now applies safe-drawing insets.
+- Fixed: blank screen while checking — the app list renders immediately from local package
+  info; each app's latest version fills in as its own call returns, with a progress counter
+  and a per-row "check failed" state plus a Retry button.
+- New: proper app icon — navy adaptive icon with a gold H (and monochrome layer for
+  Android 13+ themed icons), replacing the generic system download arrow.
+
 ## 0.1.2
 - **Hermes can now actually install updates.** The download → verify → install flow is wired
   to the UI: an Update button per app, progress, plain-English gate refusals, and the system

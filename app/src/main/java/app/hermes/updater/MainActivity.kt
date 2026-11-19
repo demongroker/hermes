@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -43,6 +45,7 @@ private data class Row(
   val latest: String?,
   val available: Boolean,
   val pinned: Boolean,
+  val failed: Boolean = false,
 )
 
 class MainActivity : ComponentActivity() {
@@ -66,27 +69,47 @@ class MainActivity : ComponentActivity() {
   @Composable
   private fun AppList(installer: ApkInstaller, client: GitHubClient, flow: UpdateFlow) {
     var rows by remember { mutableStateOf<List<Row>>(emptyList()) }
-    var status by remember { mutableStateOf("Checking…") }
+    var status by remember { mutableStateOf("Checking… (0/${AppCatalog.apps.size})") }
     val flowStates = remember { mutableStateMapOf<String, FlowState>() }
     var confirmRow by remember { mutableStateOf<Row?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+      // Render the list IMMEDIATELY from local package info — never a blank screen while
+      // the network calls run. Each app's "latest" fills in as its own call returns.
       rows = withContext(Dispatchers.IO) {
         AppCatalog.apps.map { app ->
-          val installed = installer.installedInfo(app.packageName)?.versionName ?: "not installed"
-          val latest = runCatching { client.latestRelease(app)?.tag?.removePrefix("v") }.getOrNull()
           Row(
             app = app,
-            installed = installed,
-            latest = latest,
-            available = latest != null && installed != "not installed" &&
-              Versions.isNewer(latest, installed),
+            installed = installer.installedInfo(app.packageName)?.versionName ?: "not installed",
+            latest = null,
+            available = false,
             pinned = app.certPins.isNotEmpty(),
           )
         }
       }
-      status = "Checked ${AppCatalog.apps.size} app(s)"
+      var done = 0
+      coroutineScope {
+        AppCatalog.apps.forEach { app ->
+          launch {
+            val latest = withContext(Dispatchers.IO) {
+              runCatching { client.latestRelease(app)?.tag?.removePrefix("v") }.getOrNull()
+            }
+            rows = rows.map { r ->
+              if (r.app.id != app.id) r
+              else r.copy(
+                latest = latest,
+                failed = latest == null,
+                available = latest != null && r.installed != "not installed" &&
+                  Versions.isNewer(latest, r.installed),
+              )
+            }
+            done++
+            status = if (done == AppCatalog.apps.size) "Checked ${AppCatalog.apps.size} app(s)"
+            else "Checking… ($done/${AppCatalog.apps.size})"
+          }
+        }
+      }
     }
 
     fun startFlow(row: Row) {
@@ -127,7 +150,12 @@ class MainActivity : ComponentActivity() {
       )
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+      Modifier
+        .fillMaxSize()
+        .safeDrawingPadding()
+        .padding(16.dp),
+    ) {
       Text("Hermes", style = MaterialTheme.typography.headlineMedium)
       Text(status, style = MaterialTheme.typography.bodySmall)
       Text(
@@ -152,7 +180,10 @@ class MainActivity : ComponentActivity() {
                 verticalAlignment = Alignment.CenterVertically,
               ) {
                 Text("installed ${row.installed}", style = MaterialTheme.typography.bodySmall)
-                Text("latest ${row.latest ?: "?"}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                  "latest ${row.latest ?: if (row.failed) "check failed" else "…"}",
+                  style = MaterialTheme.typography.bodySmall,
+                )
               }
               Text(
                 when {
@@ -164,16 +195,18 @@ class MainActivity : ComponentActivity() {
                   state is FlowState.Blocked -> state.message
                   state is FlowState.Failed -> state.message
                   row.available -> "Update available"
+                  row.latest == null && !row.failed -> "Checking…"
+                  row.failed -> "Release check failed — tap Retry"
                   else -> "Up to date"
                 },
                 style = MaterialTheme.typography.bodySmall,
               )
-              if (row.available && row.pinned) {
+              if (row.pinned && (row.available || row.failed)) {
                 Button(
                   onClick = { onUpdateTap(row) },
                   enabled = !running && !flow.isBusy,
                   modifier = Modifier.padding(top = 8.dp),
-                ) { Text(if (running) "Working…" else "Update") }
+                ) { Text(if (running) "Working…" else if (row.failed) "Retry" else "Update") }
               }
             }
           }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Gold H, centred in the adaptive-icon safe zone (66dp circle). -->
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M38,34 h8 v16 h16 v-16 h8 v40 h-8 v-16 h-16 v16 h-8 z" />
+</vector>
