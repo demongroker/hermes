@@ -31,7 +31,7 @@ class GitHubClient(
 ) {
 
   fun latestRelease(app: CatalogApp): LatestRelease? {
-    val json = get("${API}/${app.repo}/releases/latest") ?: return null
+    val json = get("${API}/${app.repo}/releases/latest", auth = true) ?: return null
     val release = JSONObject(json)
     val tag = release.optString("tag_name").ifBlank { return null }
     val assets = release.optJSONArray("assets") ?: return null
@@ -54,10 +54,51 @@ class GitHubClient(
     )
   }
 
-  /** Fetches a small text asset (the published checksum). */
-  fun fetchText(url: String): String? = get(url)
+  /**
+   * Fetches a small text asset (the published checksum). Public assets are fetched WITHOUT
+   * the token: HttpURLConnection re-sends request headers on redirect, and asset downloads
+   * redirect to the CDN — the token must not travel there.
+   */
+  fun fetchText(url: String): String? = get(url, auth = false)
 
-  private fun get(url: String): String? {
+  /**
+   * Streams a release asset to [dest] (caller passes a `.part` file). HTTPS only, no token,
+   * progress in percent (-1 when the total is unknown). Returns false on any failure —
+   * the caller deletes the partial file.
+   */
+  fun download(url: String, dest: java.io.File, onProgress: (Int) -> Unit): Boolean {
+    if (!url.startsWith("https://")) return false
+    val conn = connectionFactory(url)
+    return try {
+      conn.instanceFollowRedirects = true
+      conn.connectTimeout = 15_000
+      conn.readTimeout = 60_000
+      conn.setRequestProperty("User-Agent", "Hermes-Updater")
+      if (conn.responseCode != 200) return false
+      val total = conn.contentLengthLong
+      dest.parentFile?.mkdirs()
+      conn.inputStream.use { input ->
+        dest.outputStream().use { out ->
+          val buffer = ByteArray(1 shl 16)
+          var done = 0L
+          while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            out.write(buffer, 0, read)
+            done += read
+            onProgress(if (total > 0) ((done * 100) / total).toInt().coerceIn(0, 100) else -1)
+          }
+        }
+      }
+      true
+    } catch (e: Throwable) {
+      false
+    } finally {
+      runCatching { conn.disconnect() }
+    }
+  }
+
+  private fun get(url: String, auth: Boolean): String? {
     val conn = connectionFactory(url)
     return try {
       conn.instanceFollowRedirects = true
@@ -65,8 +106,10 @@ class GitHubClient(
       conn.readTimeout = 25_000
       conn.setRequestProperty("Accept", "application/vnd.github+json")
       conn.setRequestProperty("User-Agent", "Hermes-Updater")
-      tokenProvider()?.takeIf { it.isNotBlank() }?.let {
-        conn.setRequestProperty("Authorization", "Bearer $it")
+      if (auth) {
+        tokenProvider()?.takeIf { it.isNotBlank() }?.let {
+          conn.setRequestProperty("Authorization", "Bearer $it")
+        }
       }
       if (conn.responseCode != 200) return null
       conn.inputStream.bufferedReader().use { it.readText() }
