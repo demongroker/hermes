@@ -13,8 +13,10 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Downloads and installs one app's update **in the background**.
@@ -50,20 +52,21 @@ class DownloadWorker(
 
     // The flow callback is non-suspend (GitHubClient.download is blocking), so the progress
     // notification is driven from the shared state flow rather than from inside the callback.
-    val notifier = kotlinx.coroutines.coroutineScope {
-      kotlinx.coroutines.launch {
-        states.collect { map ->
-          val st = map[id] ?: return@collect
-          val (text, pct) = when (st) {
-            is FlowState.Downloading -> "Downloading ${app.displayName}" to st.percent
-            FlowState.Verifying -> "Verifying ${app.displayName}" to -1
-            FlowState.Installing -> "Installing ${app.displayName}" to -1
-            is FlowState.Blocked -> st.message to -1
-            is FlowState.Failed -> st.message to -1
-            FlowState.Idle -> "Idle" to -1
-          }
-          runCatching { setForeground(foregroundInfo(app.displayName, text, pct)) }
+    // Deliberately NOT `coroutineScope { launch { … } }`: coroutineScope waits for its children,
+    // and a never-completing `states.collect` would block doWork forever. GlobalScope is scoped
+    // to this worker — [notifier] is cancelled as soon as the flow returns.
+    val notifier = GlobalScope.launch {
+      states.collect { map ->
+        val st = map[id] ?: return@collect
+        val (text, pct) = when (st) {
+          is FlowState.Downloading -> "Downloading ${app.displayName}" to st.percent
+          FlowState.Verifying -> "Verifying ${app.displayName}" to -1
+          FlowState.Installing -> "Installing ${app.displayName}" to -1
+          is FlowState.Blocked -> st.message to -1
+          is FlowState.Failed -> st.message to -1
+          FlowState.Idle -> "Idle" to -1
         }
+        runCatching { setForeground(foregroundInfo(app.displayName, text, pct)) }
       }
     }
     UpdateFlow(ctx, client, installer).run(app, release) { state -> publish(id, state) }
