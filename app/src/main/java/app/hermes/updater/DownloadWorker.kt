@@ -13,6 +13,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -50,7 +52,7 @@ class DownloadWorker(
 
     // The flow callback is non-suspend (GitHubClient.download is blocking), so the progress
     // notification is driven from the shared state flow instead of from inside the callback.
-    val notifier = kotlinx.coroutines.launch {
+    val notifier = coroutineScope { launch {
       states.collect { map ->
         val st = map[id] ?: return@collect
         val (text, pct) = when (st) {
@@ -65,8 +67,9 @@ class DownloadWorker(
       }
     }
     val flow = UpdateFlow(ctx, client, installer)
-    flow.run(app, release) { state -> publish(id, state) }
-    notifier.cancel()
+      flow.run(app, release) { state -> publish(id, state) }
+      notifier.cancel()
+    }
     return Result.success()
   }
 
