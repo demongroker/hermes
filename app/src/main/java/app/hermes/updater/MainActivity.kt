@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -88,6 +89,9 @@ class MainActivity : ComponentActivity() {
     var refreshKey by remember { mutableStateOf(0) }
     var showPins by remember { mutableStateOf(false) }
     val flowStates = remember { mutableStateMapOf<String, FlowState>() }
+    // Worker progress: survives the Activity, so a download that started earlier
+    // (or that finished while the app was backgrounded) still shows here.
+    val downloadStates by DownloadWorker.states.collectAsState()
     var confirmRow by remember { mutableStateOf<Row?>(null) }
     val scope = rememberCoroutineScope()
     val timeFormat = remember { DateFormat.getTimeFormat(this) }
@@ -136,18 +140,16 @@ class MainActivity : ComponentActivity() {
     }
 
     fun startFlow(row: Row) {
-      scope.launch {
-        val release = withContext(Dispatchers.IO) {
-          runCatching { client.latestRelease(row.app) }.getOrNull()
-        }
-        if (release == null) {
-          flowStates[row.app.id] = FlowState.Failed("Could not read the latest release.")
-          return@launch
-        }
-        withContext(Dispatchers.IO) {
-          flow.run(row.app, release) { state -> flowStates[row.app.id] = state }
-        }
-      }
+      // Hand the download to WorkManager: a coroutine in this scope dies when the Activity
+      // stops, which is exactly why switching apps killed the Vela update at 3% with no
+      // notification. The worker runs in the background and posts a progress notification.
+      flowStates[row.app.id] = FlowState.Downloading(-1)
+      DownloadWorker.enqueue(applicationContext, row.app.id)
+    }
+
+    fun openApp(row: Row) {
+      val intent = DownloadWorker.launchIntent(this, row.app.packageName) ?: return
+      runCatching { startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
     fun onUpdateTap(row: Row) {
@@ -246,7 +248,7 @@ class MainActivity : ComponentActivity() {
 
       LazyColumn(Modifier.fillMaxSize().padding(top = 8.dp)) {
         items(rows) { row ->
-          val state = flowStates[row.app.id] ?: FlowState.Idle
+          val state = downloadStates[row.app.id] ?: flowStates[row.app.id] ?: FlowState.Idle
           val running = CatalogCopy.isRunning(state)
           val line = CatalogCopy.status(
             pinned = row.pinned,
@@ -324,6 +326,14 @@ class MainActivity : ComponentActivity() {
                   modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                   shape = MaterialTheme.shapes.small,
                 ) { Text(action) }
+              }
+              // Launch the installed app without leaving Hermes. Hidden when not installed
+              // (NOT_INSTALLED) or while its update is running.
+              if (row.installed != CatalogCopy.NOT_INSTALLED && !running) {
+                TextButton(
+                  onClick = { openApp(row) },
+                  modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                ) { Text("Open") }
               }
             }
           }

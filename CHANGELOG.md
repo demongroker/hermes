@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.5
+
+### Fixed — updates died when you left the app
+
+- **The download ran in the Activity's coroutine scope**, so switching apps stopped it mid-flight
+  (you saw Vela die at 3%) and there was **no status-bar notification** because nothing was
+  foregrounded. Downloads now run in `DownloadWorker` (WorkManager + `setForeground`), which
+  keeps running in the background and posts a real progress notification you can watch and
+  dismiss. Progress is published through a shared state flow, so the card still shows live
+  percentage even if the download started before you reopened Hermes.
+- Added the `FOREGROUND_SERVICE_DATA_SYNC` permission for Android 14+.
+
+### Added — launch an app from Hermes
+
+- Every **installed** app now has an **Open** button alongside its update action, so you can
+  jump straight into Vela/VideoDroid/JellyAmp without leaving Hermes. It disappears while that
+  app is updating.
+
 ## 0.1.4
 - **New look: navy + gold.** A real theme (`HermesTheme`) replaces the stock Material purple —
   dark and light schemes, one type scale, 12 dp cards / 8 dp controls. These tokens are the
