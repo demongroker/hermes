@@ -41,7 +41,7 @@ class DownloadWorker(
     val client = GitHubClient()
     val installer = ApkInstaller(ctx)
 
-    setForeground(foregroundInfo(app.displayName, "Waiting for connection", -1))
+    setForeground(foregroundInfo(app.id, app.displayName, "Waiting for connection", -1))
     publish(id, FlowState.Downloading(-1))
 
     val release = runCatching { client.latestRelease(app) }.getOrNull()
@@ -66,7 +66,7 @@ class DownloadWorker(
           is FlowState.Failed -> st.message to -1
           FlowState.Idle -> "Idle" to -1
         }
-        runCatching { setForeground(foregroundInfo(app.displayName, text, pct)) }
+        runCatching { setForeground(foregroundInfo(app.id, app.displayName, text, pct)) }
       }
     }
     UpdateFlow(ctx, client, installer).run(app, release) { state -> publish(id, state) }
@@ -74,7 +74,7 @@ class DownloadWorker(
     return Result.success()
   }
 
-  private fun foregroundInfo(name: String, text: String, pct: Int): ForegroundInfo {
+  private fun foregroundInfo(appId: String, name: String, text: String, pct: Int): ForegroundInfo {
     val ctx = applicationContext
     val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     nm.createNotificationChannel(
@@ -90,9 +90,9 @@ class DownloadWorker(
       .setOnlyAlertOnce(true)
       .setProgress(100, pct.coerceIn(0, 100), pct < 0)
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      ForegroundInfo(NOTIFICATION_ID, builder.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+      ForegroundInfo(notificationId(appId), builder.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     } else {
-      ForegroundInfo(NOTIFICATION_ID, builder.build())
+      ForegroundInfo(notificationId(appId), builder.build())
     }
   }
 
@@ -105,21 +105,41 @@ class DownloadWorker(
   companion object {
     const val KEY_APP_ID = "app_id"
     private const val CHANNEL = "updates"
-    private const val NOTIFICATION_ID = 7
+
+    /** Base id; each app adds its catalog index so parallel downloads keep their own notification. */
+    private const val NOTIFICATION_ID_BASE = 7
 
     /** Live progress, keyed by app id — survives the Activity, shared with the UI. */
     private val _states = MutableStateFlow<Map<String, FlowState>>(emptyMap())
     val states = _states.asStateFlow()
 
+    /**
+     * Single-app path. The name comes from [UpdatePlanner.workName] — the batch path must use the
+     * same one, or the two could double-enqueue the same app.
+     */
     fun enqueue(ctx: Context, appId: String) {
       val request = OneTimeWorkRequestBuilder<DownloadWorker>()
         .setInputData(Data.Builder().putString(KEY_APP_ID, appId).build())
         .build()
       WorkManager.getInstance(ctx).enqueueUniqueWork(
-        "hermes-download-$appId",
+        UpdatePlanner.workName(appId),
         androidx.work.ExistingWorkPolicy.KEEP,
         request,
       )
+    }
+
+    /**
+     * Batch path: one worker per app, each under its own unique name. Distinct names let the apps
+     * download in parallel; KEEP keeps an app that is already queued single-flight.
+     */
+    fun enqueueAll(ctx: Context, appIds: List<String>) {
+      appIds.forEach { enqueue(ctx, it) }
+    }
+
+    /** A distinct notification id per app — a shared id makes parallel downloads overwrite each other. */
+    fun notificationId(appId: String): Int {
+      val index = AppCatalog.apps.indexOfFirst { it.id == appId }
+      return NOTIFICATION_ID_BASE + if (index >= 0) index else appId.hashCode().mod(1000)
     }
 
     /** Launches an installed app straight from Hermes, or null when it has no launcher entry. */

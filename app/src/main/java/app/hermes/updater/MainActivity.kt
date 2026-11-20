@@ -53,16 +53,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** One row of the list: what is installed, what is published, and the pins that matter. */
-private data class Row(
-  val app: CatalogApp,
-  val installed: String,
-  val latest: String?,
-  val available: Boolean,
-  val pinned: Boolean,
-  val failed: Boolean = false,
-)
-
 class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,7 +73,7 @@ class MainActivity : ComponentActivity() {
 
   @Composable
   private fun AppList(installer: ApkInstaller, client: GitHubClient, flow: UpdateFlow) {
-    var rows by remember { mutableStateOf<List<Row>>(emptyList()) }
+    var rows by remember { mutableStateOf<List<UpdateRow>>(emptyList()) }
     var status by remember { mutableStateOf("Checking… (0/${AppCatalog.apps.size})") }
     var lastChecked by remember { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(true) }
@@ -93,7 +83,8 @@ class MainActivity : ComponentActivity() {
     // Worker progress: survives the Activity, so a download that started earlier
     // (or that finished while the app was backgrounded) still shows here.
     val downloadStates by DownloadWorker.states.collectAsState()
-    var confirmRow by remember { mutableStateOf<Row?>(null) }
+    var confirmRow by remember { mutableStateOf<UpdateRow?>(null) }
+    var confirmBatch by remember { mutableStateOf<List<UpdateRow>?>(null) }
     val scope = rememberCoroutineScope()
     val timeFormat = remember { DateFormat.getTimeFormat(this) }
 
@@ -104,7 +95,7 @@ class MainActivity : ComponentActivity() {
       // the network calls run. Each app's "latest" fills in as its own call returns.
       rows = withContext(Dispatchers.IO) {
         AppCatalog.apps.map { app ->
-          Row(
+          UpdateRow(
             app = app,
             installed = installer.installedInfo(app.packageName)?.versionName
               ?: CatalogCopy.NOT_INSTALLED,
@@ -123,12 +114,12 @@ class MainActivity : ComponentActivity() {
             }
             rows = rows.map { r ->
               if (r.app.id != app.id) r
-              else r.copy(
-                latest = latest,
-                failed = latest == null,
-                available = latest != null && r.installed != CatalogCopy.NOT_INSTALLED &&
-                  Versions.isNewer(latest, r.installed),
-              )
+              else {
+                // The card's "update available" flag and the batch decision are the SAME
+                // function — the header count and the enqueue list cannot drift apart.
+                val checked = r.copy(latest = latest, failed = latest == null)
+                checked.copy(available = UpdatePlanner.isUpdate(checked))
+              }
             }
             done++
             status = if (done == AppCatalog.apps.size) "Checked ${AppCatalog.apps.size} apps"
@@ -140,7 +131,13 @@ class MainActivity : ComponentActivity() {
       checking = false
     }
 
-    fun startFlow(row: Row) {
+    // Pure: the same list feeds the header count and the batch enqueue call.
+    val pending = UpdatePlanner.pending(rows)
+    val runningAny = rows.any { row ->
+      CatalogCopy.isRunning(downloadStates[row.app.id] ?: flowStates[row.app.id] ?: FlowState.Idle)
+    }
+
+    fun startFlow(row: UpdateRow) {
       // Hand the download to WorkManager: a coroutine in this scope dies when the Activity
       // stops, which is exactly why switching apps killed the Vela update at 3% with no
       // notification. The worker runs in the background and posts a progress notification.
@@ -148,18 +145,55 @@ class MainActivity : ComponentActivity() {
       DownloadWorker.enqueue(applicationContext, row.app.id)
     }
 
-    fun openApp(row: Row) {
+    fun startBatch(batch: List<UpdateRow>) {
+      // One worker per app, each under its own unique name — parallel downloads, single-flight
+      // per app. flowStates gives immediate feedback before the workers publish their own state.
+      batch.forEach { row -> flowStates[row.app.id] = FlowState.Downloading(-1) }
+      DownloadWorker.enqueueAll(applicationContext, batch.map { it.app.id })
+    }
+
+    fun openApp(row: UpdateRow) {
       val intent = DownloadWorker.launchIntent(this, row.app.packageName) ?: return
       runCatching { startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
-    fun onUpdateTap(row: Row) {
+    fun onUpdateTap(row: UpdateRow) {
       val unmetered = isUnmetered(this)
       if (NetworkPolicy.decide(unmetered) == NetworkDecision.ASK_FIRST) {
         confirmRow = row
       } else {
         startFlow(row)
       }
+    }
+
+    fun onUpdateAllTap(batch: List<UpdateRow>) {
+      // One confirmation for the whole batch, not one per app.
+      val unmetered = isUnmetered(this)
+      if (NetworkPolicy.decide(unmetered) == NetworkDecision.ASK_FIRST) {
+        confirmBatch = batch
+      } else {
+        startBatch(batch)
+      }
+    }
+
+    confirmBatch?.let { batch ->
+      AlertDialog(
+        onDismissRequest = { confirmBatch = null },
+        title = { Text("Metered connection") },
+        text = {
+          Text(
+            "You are on mobile data. Download ${batch.size} update(s) " +
+              "(${batch.joinToString { it.app.displayName }}) now? Hermes verifies the " +
+              "checksum and the signing certificate of every APK before anything is installed.",
+          )
+        },
+        confirmButton = {
+          TextButton(onClick = { confirmBatch = null; startBatch(batch) }) { Text("Download") }
+        },
+        dismissButton = {
+          TextButton(onClick = { confirmBatch = null }) { Text("Not now") }
+        },
+      )
     }
 
     confirmRow?.let { row ->
@@ -240,6 +274,18 @@ class MainActivity : ComponentActivity() {
           )
         }
         Column(horizontalAlignment = Alignment.End) {
+          // The batch control: hidden at zero, "Updating n…" and disabled while any download
+          // is in flight so a batch can never be enqueued twice.
+          if (pending.isNotEmpty()) {
+            Button(
+              onClick = { onUpdateAllTap(pending) },
+              enabled = !runningAny && !checking,
+              modifier = Modifier.padding(bottom = 2.dp),
+              shape = MaterialTheme.shapes.small,
+            ) {
+              Text(if (runningAny) "Updating ${pending.size}…" else "Update all (${pending.size})")
+            }
+          }
           TextButton(onClick = { refreshKey++ }, enabled = !checking) {
             Text(if (checking) "Checking…" else "Check now")
           }
