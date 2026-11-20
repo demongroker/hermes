@@ -10,7 +10,9 @@
   keeps running in the background and posts a real progress notification you can watch and
   dismiss. Progress is published through a shared state flow, so the card still shows live
   percentage even if the download started before you reopened Hermes.
-- Added the `FOREGROUND_SERVICE_DATA_SYNC` permission for Android 14+.
+- Added the `FOREGROUND_SERVICE_DATA_SYNC` permission for Android 14+, and declared the
+  `dataSync` foreground service type on WorkManager's `SystemForegroundService` so the release
+  lint gate accepts the worker's `setForeground()` call.
 
 ### Added — launch an app from Hermes
 
