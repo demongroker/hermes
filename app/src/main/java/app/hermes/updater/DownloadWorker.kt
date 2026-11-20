@@ -13,8 +13,6 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -51,25 +49,25 @@ class DownloadWorker(
     }
 
     // The flow callback is non-suspend (GitHubClient.download is blocking), so the progress
-    // notification is driven from the shared state flow instead of from inside the callback.
-    val notifier = coroutineScope { launch {
-      states.collect { map ->
-        val st = map[id] ?: return@collect
-        val (text, pct) = when (st) {
-          is FlowState.Downloading -> "Downloading ${app.displayName}" to st.percent
-          FlowState.Verifying -> "Verifying ${app.displayName}" to -1
-          FlowState.Installing -> "Installing ${app.displayName}" to -1
-          is FlowState.Blocked -> st.message to -1
-          is FlowState.Failed -> st.message to -1
-          FlowState.Idle -> "Idle" to -1
+    // notification is driven from the shared state flow rather than from inside the callback.
+    val notifier = kotlinx.coroutines.coroutineScope {
+      kotlinx.coroutines.launch {
+        states.collect { map ->
+          val st = map[id] ?: return@collect
+          val (text, pct) = when (st) {
+            is FlowState.Downloading -> "Downloading ${app.displayName}" to st.percent
+            FlowState.Verifying -> "Verifying ${app.displayName}" to -1
+            FlowState.Installing -> "Installing ${app.displayName}" to -1
+            is FlowState.Blocked -> st.message to -1
+            is FlowState.Failed -> st.message to -1
+            FlowState.Idle -> "Idle" to -1
+          }
+          runCatching { setForeground(foregroundInfo(app.displayName, text, pct)) }
         }
-        runCatching { setForeground(foregroundInfo(app.displayName, text, pct)) }
       }
     }
-    val flow = UpdateFlow(ctx, client, installer)
-      flow.run(app, release) { state -> publish(id, state) }
-      notifier.cancel()
-    }
+    UpdateFlow(ctx, client, installer).run(app, release) { state -> publish(id, state) }
+    notifier.cancel()
     return Result.success()
   }
 
