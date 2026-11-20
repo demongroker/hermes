@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.6
+
+### Changed — the dark theme is no longer black-on-black
+
+- **Card surface lifted `#1B2740` → `#22314F`** and every card now carries a **1 dp `#2A3A57`
+  edge**, so rows read as separate panels on an AMOLED screen instead of one dark mass. Same
+  tokens as Vela, VideoDroid and JellyAmp (`design-tokens-navy-gold.md`).
+- **Danger red `#F85149` → `#FF7469`.** The lighter card dropped the refusal colour to 3.87:1;
+  it is now 4.91:1. Every text pair on the new card was measured, not assumed — body 11.00:1,
+  muted 6.33:1, gold 6.16:1, success 5.10:1, warning 5.13:1.
+- Light mode is unchanged: primary stays the darkened gold `#7A5F14` (6.04:1 on white).
+
 ## 0.1.5
 
 ### Fixed — updates died when you left the app

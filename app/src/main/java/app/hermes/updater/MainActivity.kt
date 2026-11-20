@@ -46,6 +46,7 @@ import app.hermes.updater.ui.CatalogCopy
 import app.hermes.updater.ui.HermesTheme
 import app.hermes.updater.ui.LocalHermesTones
 import app.hermes.updater.ui.Tone
+import app.hermes.updater.ui.hermesCardBorder
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -281,6 +282,7 @@ class MainActivity : ComponentActivity() {
             colors = CardDefaults.cardColors(
               containerColor = MaterialTheme.colorScheme.surfaceVariant,
             ),
+            border = hermesCardBorder,
           ) {
             Column(Modifier.padding(14.dp)) {
               Text(

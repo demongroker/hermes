@@ -1,5 +1,6 @@
 package app.hermes.updater.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -27,8 +28,8 @@ object HermesPalette {
   // surfaces
   val NavyBase = Color(0xFF0B1220)
   val NavyElevated = Color(0xFF111A2B)
-  val NavyCard = Color(0xFF1B2740)
-  val NavyOutline = Color(0xFF2A3A57)
+  val NavyCard = Color(0xFF22314F)
+  val NavyOutline = Color(0xFF2A3A57) // 1 dp card edge (dark)
 
   // accent
   val Gold = Color(0xFFD4AF37)
@@ -46,7 +47,7 @@ object HermesPalette {
   // semantics — identical in every app
   val Success = Color(0xFF3FB950)
   val Warning = Color(0xFFD29922)
-  val Danger = Color(0xFFF85149)
+  val Danger = Color(0xFFFF7469)
   val SuccessOnLight = Color(0xFF1A7F37)
   val WarningOnLight = Color(0xFF9A6700)
   val DangerOnLight = Color(0xFFB3261E)
@@ -75,6 +76,13 @@ private val LightTones = HermesTones(
 )
 
 val LocalHermesTones = staticCompositionLocalOf { DarkTones }
+
+/**
+ * 1 dp edge on every card. Dark = navy.outline `#2A3A57`; light = `#C7CFDB`.
+ * Reads the scheme's `outline` slot so the token lives in one place per mode.
+ */
+val hermesCardBorder: BorderStroke
+  @Composable get() = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
 
 private val DarkScheme = darkColorScheme(
   primary = HermesPalette.Gold,
