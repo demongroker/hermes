@@ -87,9 +87,9 @@ class DownloadWorker(
   }
 
   private fun publish(id: String, state: FlowState) {
-    val next = states.value.toMutableMap()
+    val next = _states.value.toMutableMap()
     next[id] = state
-    states.value = next
+    _states.value = next
   }
 
   companion object {
@@ -104,7 +104,6 @@ class DownloadWorker(
     fun enqueue(ctx: Context, appId: String) {
       val request = OneTimeWorkRequestBuilder<DownloadWorker>()
         .setInputData(Data.Builder().putString(KEY_APP_ID, appId).build())
-        .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
         .build()
       WorkManager.getInstance(ctx).enqueueUniqueWork(
         "hermes-download-$appId",
