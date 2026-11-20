@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.4
+- **New look: navy + gold.** A real theme (`HermesTheme`) replaces the stock Material purple —
+  dark and light schemes, one type scale, 12 dp cards / 8 dp controls. These tokens are the
+  reference for Vela, VideoDroid and JellyAmp.
+- **Catalog cards rebuilt.** App name, installed vs latest on one line, a colour-coded status
+  line (green up-to-date, amber update, red refusal, gold in-flight), and a full-width primary
+  action. A download now shows a real progress bar instead of text alone.
+- **Install a missing app.** Previously a card with nothing installed offered no button at all;
+  it now offers **Install**, through the identical fail-closed gate.
+- **Check now.** Manual re-check in the header, with the last-checked time shown next to the
+  status. No polling was added — the daily WorkManager check is unchanged.
+- **Signing pins moved to a dialog.** The pin prefixes were a permanent third line on the main
+  screen; they are now one tap away under "Pins", still explicit about fail-closed.
+- **Metered prompt explains the guarantee** (checksum + certificate verified before install).
+- Card copy and its single action are now a pure, unit-tested state machine (`CatalogCopy`),
+  including the rule that a refusal outranks every progress and version message.
+
 ## 0.1.3
 - Fixed: the "Hermes" title drew under the status bar (edge-to-edge on targetSdk 36) —
   the layout now applies safe-drawing insets.

@@ -4,20 +4,26 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
+import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,7 +38,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.hermes.updater.ui.CatalogCopy
+import app.hermes.updater.ui.HermesTheme
+import app.hermes.updater.ui.LocalHermesTones
+import app.hermes.updater.ui.Tone
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -58,8 +71,8 @@ class MainActivity : ComponentActivity() {
     UpdateWorker.schedule(this)
 
     setContent {
-      MaterialTheme {
-        Surface(Modifier.fillMaxSize()) {
+      HermesTheme {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
           AppList(installer = installer, client = client, flow = flow)
         }
       }
@@ -70,18 +83,26 @@ class MainActivity : ComponentActivity() {
   private fun AppList(installer: ApkInstaller, client: GitHubClient, flow: UpdateFlow) {
     var rows by remember { mutableStateOf<List<Row>>(emptyList()) }
     var status by remember { mutableStateOf("Checking… (0/${AppCatalog.apps.size})") }
+    var lastChecked by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(true) }
+    var refreshKey by remember { mutableStateOf(0) }
+    var showPins by remember { mutableStateOf(false) }
     val flowStates = remember { mutableStateMapOf<String, FlowState>() }
     var confirmRow by remember { mutableStateOf<Row?>(null) }
     val scope = rememberCoroutineScope()
+    val timeFormat = remember { DateFormat.getTimeFormat(this) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(refreshKey) {
+      checking = true
+      status = "Checking… (0/${AppCatalog.apps.size})"
       // Render the list IMMEDIATELY from local package info — never a blank screen while
       // the network calls run. Each app's "latest" fills in as its own call returns.
       rows = withContext(Dispatchers.IO) {
         AppCatalog.apps.map { app ->
           Row(
             app = app,
-            installed = installer.installedInfo(app.packageName)?.versionName ?: "not installed",
+            installed = installer.installedInfo(app.packageName)?.versionName
+              ?: CatalogCopy.NOT_INSTALLED,
             latest = null,
             available = false,
             pinned = app.certPins.isNotEmpty(),
@@ -100,16 +121,18 @@ class MainActivity : ComponentActivity() {
               else r.copy(
                 latest = latest,
                 failed = latest == null,
-                available = latest != null && r.installed != "not installed" &&
+                available = latest != null && r.installed != CatalogCopy.NOT_INSTALLED &&
                   Versions.isNewer(latest, r.installed),
               )
             }
             done++
-            status = if (done == AppCatalog.apps.size) "Checked ${AppCatalog.apps.size} app(s)"
+            status = if (done == AppCatalog.apps.size) "Checked ${AppCatalog.apps.size} apps"
             else "Checking… ($done/${AppCatalog.apps.size})"
           }
         }
       }
+      lastChecked = timeFormat.format(Date())
+      checking = false
     }
 
     fun startFlow(row: Row) {
@@ -140,7 +163,13 @@ class MainActivity : ComponentActivity() {
       AlertDialog(
         onDismissRequest = { confirmRow = null },
         title = { Text("Metered connection") },
-        text = { Text("Download ${row.app.displayName} ${row.latest ?: ""} on mobile data?") },
+        text = {
+          Text(
+            "You are on mobile data. Download ${row.app.displayName} " +
+              "${row.latest ?: ""} now? Hermes verifies the checksum and the signing " +
+              "certificate before anything is installed.",
+          )
+        },
         confirmButton = {
           TextButton(onClick = { confirmRow = null; startFlow(row) }) { Text("Download") }
         },
@@ -150,63 +179,151 @@ class MainActivity : ComponentActivity() {
       )
     }
 
+    if (showPins) {
+      AlertDialog(
+        onDismissRequest = { showPins = false },
+        title = { Text("Signing pins") },
+        text = {
+          Column {
+            Text(
+              "Every install is refused unless the APK carries one of these certificates. " +
+                "Prefixes shown only.",
+              style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(12.dp))
+            AppCatalog.apps.forEach { app ->
+              val pin = app.certPins.firstOrNull()
+              Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                Text(
+                  app.displayName,
+                  style = MaterialTheme.typography.bodyMedium,
+                  modifier = Modifier.width(110.dp),
+                )
+                Text(
+                  pin?.take(8) ?: "unpinned",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = if (pin == null) LocalHermesTones.current.danger
+                  else LocalHermesTones.current.muted,
+                )
+              }
+            }
+          }
+        },
+        confirmButton = { TextButton(onClick = { showPins = false }) { Text("Close") } },
+      )
+    }
+
     Column(
       Modifier
         .fillMaxSize()
         .safeDrawingPadding()
-        .padding(16.dp),
+        .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-      Text("Hermes", style = MaterialTheme.typography.headlineMedium)
-      Text(status, style = MaterialTheme.typography.bodySmall)
-      Text(
-        // Pin prefixes only — never a full certificate.
-        "Signing pins: " + AppCatalog.apps.joinToString(", ") { app ->
-          val pin = app.certPins.firstOrNull()
-          "${app.displayName}=${pin?.take(8) ?: "unpinned"}"
-        },
-        style = MaterialTheme.typography.bodySmall,
-      )
-      LazyColumn(Modifier.fillMaxSize().padding(top = 12.dp)) {
+      Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Column {
+          Text(
+            "Hermes",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary,
+          )
+          Text(
+            if (lastChecked == null) status else "$status · $lastChecked",
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalHermesTones.current.muted,
+          )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+          TextButton(onClick = { refreshKey++ }, enabled = !checking) {
+            Text(if (checking) "Checking…" else "Check now")
+          }
+          TextButton(onClick = { showPins = true }) { Text("Pins") }
+        }
+      }
+
+      LazyColumn(Modifier.fillMaxSize().padding(top = 8.dp)) {
         items(rows) { row ->
           val state = flowStates[row.app.id] ?: FlowState.Idle
-          val running = state is FlowState.Downloading || state is FlowState.Verifying ||
-            state is FlowState.Installing
-          Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Column(Modifier.padding(12.dp)) {
-              Text(row.app.displayName, style = MaterialTheme.typography.titleMedium)
+          val running = CatalogCopy.isRunning(state)
+          val line = CatalogCopy.status(
+            pinned = row.pinned,
+            installed = row.installed,
+            latest = row.latest,
+            failed = row.failed,
+            available = row.available,
+            state = state,
+          )
+          val action = CatalogCopy.action(
+            running = running,
+            pinned = row.pinned,
+            installed = row.installed,
+            latest = row.latest,
+            failed = row.failed,
+            available = row.available,
+          )
+          val tones = LocalHermesTones.current
+          val toneColor: Color = when (line.tone) {
+            Tone.GOOD -> tones.success
+            Tone.WARN -> tones.warning
+            Tone.BAD -> tones.danger
+            Tone.BUSY -> MaterialTheme.colorScheme.primary
+            Tone.NEUTRAL -> tones.muted
+          }
+
+          Card(
+            Modifier.fillMaxWidth().padding(vertical = 5.dp),
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            ),
+          ) {
+            Column(Modifier.padding(14.dp)) {
+              Text(
+                row.app.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+              )
+              Spacer(Modifier.height(4.dp))
               Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
               ) {
-                Text("installed ${row.installed}", style = MaterialTheme.typography.bodySmall)
                 Text(
-                  "latest ${row.latest ?: if (row.failed) "check failed" else "…"}",
+                  CatalogCopy.installedLabel(row.installed),
                   style = MaterialTheme.typography.bodySmall,
+                  color = tones.muted,
+                )
+                Text(
+                  CatalogCopy.latestLabel(row.latest, row.failed),
+                  style = MaterialTheme.typography.bodySmall,
+                  color = tones.muted,
                 )
               }
+              Spacer(Modifier.height(8.dp))
               Text(
-                when {
-                  !row.pinned -> "No signing pin — installs refused (fail closed)"
-                  state is FlowState.Downloading ->
-                    if (state.percent >= 0) "Downloading ${state.percent}%" else "Downloading…"
-                  state is FlowState.Verifying -> "Verifying checksum and signature…"
-                  state is FlowState.Installing -> "Opening the system installer…"
-                  state is FlowState.Blocked -> state.message
-                  state is FlowState.Failed -> state.message
-                  row.available -> "Update available"
-                  row.latest == null && !row.failed -> "Checking…"
-                  row.failed -> "Release check failed — tap Retry"
-                  else -> "Up to date"
-                },
-                style = MaterialTheme.typography.bodySmall,
+                line.text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (line.tone == Tone.BAD) FontWeight.SemiBold else FontWeight.Normal,
+                color = toneColor,
               )
-              if (row.pinned && (row.available || row.failed)) {
+              CatalogCopy.progressPercent(state)?.let { pct ->
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                  progress = { pct / 100f },
+                  modifier = Modifier.fillMaxWidth(),
+                )
+              }
+              if (action != null) {
                 Button(
                   onClick = { onUpdateTap(row) },
                   enabled = !running && !flow.isBusy,
-                  modifier = Modifier.padding(top = 8.dp),
-                ) { Text(if (running) "Working…" else if (row.failed) "Retry" else "Update") }
+                  modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                  shape = MaterialTheme.shapes.small,
+                ) { Text(action) }
               }
             }
           }
