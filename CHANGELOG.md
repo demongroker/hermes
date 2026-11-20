@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.7
+
+### Added — Update all
+
+- **"Update all (n)"** in the header next to Check now, where **n is the number of cards with a
+  real update available**. It disappears at zero. While any download is in flight it reads
+  **"Updating n…"** and is disabled, so a batch can never be enqueued twice.
+- **Parallel downloads.** One `DownloadWorker` per pending app, each under its own unique-work
+  name — the same name the per-card button uses, so **single-flight per app is preserved** — and
+  each with **its own progress notification** instead of one notification overwriting another.
+- **One metered prompt per batch.** On mobile data the confirmation lists the whole batch once;
+  you are no longer asked once per app.
+- The "which rows are updatable" decision is now a **pure, unit-tested function**
+  (`UpdatePlanner`), and the header count and the enqueue list come from the same call, so the
+  number you see is the number that gets enqueued. A card with nothing installed is an *install*,
+  not an update, and is deliberately left out of the batch.
+- New tests: `UpdatePlanTest` (the updatable decision, batch order, unique work names) and
+  `UpdateBatchTest` (the batch reuses the per-app worker/name; distinct notification ids).
+
 ## 0.1.6
 
 ### Changed — the dark theme is no longer black-on-black
