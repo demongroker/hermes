@@ -44,7 +44,7 @@ class UpdateFlow(
    * any thread (Compose snapshot state). Returns when the installer intent was fired or the
    * flow was refused/failed.
    */
-  suspend fun run(app: CatalogApp, release: LatestRelease, onState: suspend (FlowState) -> Unit) {
+  suspend fun run(app: CatalogApp, release: LatestRelease, onState: (FlowState) -> Unit) {
     if (!busy.compareAndSet(false, true)) {
       onState(FlowState.Failed("Another download is already running."))
       return
