@@ -17,7 +17,7 @@ class UpdateGateTest {
     size: Long = big,
     pins: List<String> = listOf(pin),
     downloaded: List<String> = listOf(pin),
-    installed: List<String> = listOf(pin),
+    installed: List<String>? = listOf(pin),
   ) = UpdateGate.decide(expectedSha, actualSha, size, pins, downloaded, installed)
 
   @Test
@@ -68,6 +68,14 @@ class UpdateGateTest {
       GateResult.Blocked(Refusal.INSTALLED_CERT_MISSING),
       decide(installed = emptyList()),
     )
+  }
+
+  @Test
+  fun appThatIsNotInstalledIsAllowed() {
+    // Nothing present under that package name: there is no previous signer to conflict with,
+    // so a first-time install must go ahead. Blocking this is what made fresh installs
+    // impossible.
+    assertEquals(GateResult.Allowed, decide(installed = null))
   }
 
   @Test

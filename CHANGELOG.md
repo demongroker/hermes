@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.11
+
+### Fixed — apps that are not installed can now be installed
+
+- **First-time installs were impossible.** The fail-closed gate treated "no package installed"
+  exactly like "installed by a different signer", so any app Hermes had never installed was
+  refused with *"Signature does not match the installed app"* even though its card read
+  "Not installed". Vela and Hermes Monitor were both stuck this way.
+- `ApkInstaller.installedInfo()` now returns `null` when the package name is absent
+  (`NameNotFoundException`), which is the gate's "nothing to conflict with" signal; a package
+  that is present but whose signer cannot be read still returns an empty list.
+- `UpdateGate.decide()` takes a nullable `installedCerts`: null means proceed, an empty
+  non-null list or a different signer still refuses.
+- Tests: new `appThatIsNotInstalledIsAllowed`; the different-signer and unreadable-signer
+  refusals are unchanged and still covered.
+
 ## 0.1.10
 
 ### Fixed — a dropped connection no longer throws the download away

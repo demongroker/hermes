@@ -28,6 +28,10 @@ sealed interface GateResult {
  *  - download carries no cert -> CERT_MISSING
  *  - downloaded cert does not match the pin            -> CERT_MISMATCH
  *  - downloaded cert does not match the installed app  -> INSTALLED_CERT_MISSING
+ *
+ * An absent package (`installedCerts == null`) is not a mismatch: installing an app for the first
+ * time must work. Only a package that is actually present and carries a different (or unreadable)
+ * signer is refused.
  */
 object UpdateGate {
 
@@ -40,7 +44,7 @@ object UpdateGate {
     sizeBytes: Long,
     pinnedCerts: List<String>,
     downloadedCerts: List<String>,
-    installedCerts: List<String>,
+    installedCerts: List<String>?,
   ): GateResult {
     val expected = normalise(expectedSha256)
     if (expected.isEmpty()) return GateResult.Blocked(Refusal.HASH_MISSING)
@@ -55,9 +59,13 @@ object UpdateGate {
     if (downloaded.isEmpty()) return GateResult.Blocked(Refusal.CERT_MISSING)
     if (downloaded.none { it in pins }) return GateResult.Blocked(Refusal.CERT_MISMATCH)
 
-    val installed = installedCerts.map(::normalise).filter { it.isNotEmpty() }.toSet()
-    if (installed.isEmpty()) return GateResult.Blocked(Refusal.INSTALLED_CERT_MISSING)
-    if (downloaded.none { it in installed }) return GateResult.Blocked(Refusal.INSTALLED_CERT_MISSING)
+    // Null means no such package is installed, so there is nothing to be incompatible with and a
+    // fresh install may proceed. A package that IS present must share a signer with the download;
+    // a present-but-unreadable (empty) signer list stays fail-closed.
+    val installed = installedCerts?.map(::normalise)?.filter { it.isNotEmpty() }?.toSet()
+    if (installed != null && downloaded.none { it in installed }) {
+      return GateResult.Blocked(Refusal.INSTALLED_CERT_MISSING)
+    }
 
     return GateResult.Allowed
   }

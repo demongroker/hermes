@@ -20,11 +20,21 @@ data class InstalledInfo(val versionName: String?, val certs: List<String>)
  */
 class ApkInstaller(private val context: Context) {
 
-  fun installedInfo(packageName: String): InstalledInfo? = runCatching {
-    val pm = context.packageManager
-    val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-    InstalledInfo(info.versionName, info.signingInfo?.apkContentsSigners?.map { certDigest(it.toByteArray()) }.orEmpty())
-  }.getOrNull()
+  /**
+   * Installed version + signer, or null when the package is not installed at all. Null is the
+   * gate's "nothing to be incompatible with" signal: a missing package must be distinguishable
+   * from one that is present but whose signer cannot be read (that returns an empty cert list).
+   */
+  fun installedInfo(packageName: String): InstalledInfo? {
+    val info = try {
+      context.packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+    } catch (e: PackageManager.NameNotFoundException) {
+      return null
+    }
+    return runCatching {
+      InstalledInfo(info.versionName, info.signingInfo?.apkContentsSigners?.map { certDigest(it.toByteArray()) }.orEmpty())
+    }.getOrDefault(InstalledInfo(info.versionName, emptyList()))
+  }
 
   fun sha256(file: File): String? = runCatching {
     val md = MessageDigest.getInstance("SHA-256")
@@ -57,7 +67,7 @@ class ApkInstaller(private val context: Context) {
       sizeBytes = file.length(),
       pinnedCerts = app.certPins,
       downloadedCerts = apkCerts(file),
-      installedCerts = installedInfo(app.packageName)?.certs.orEmpty(),
+      installedCerts = installedInfo(app.packageName)?.certs,
     )
 
   /** Only called after [verify] returned [GateResult.Allowed]. */
