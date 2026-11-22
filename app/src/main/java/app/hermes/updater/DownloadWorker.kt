@@ -7,9 +7,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ForegroundInfo
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -17,6 +20,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 /**
  * Downloads and installs one app's update **in the background**.
@@ -62,6 +66,7 @@ class DownloadWorker(
           is FlowState.Downloading -> "Downloading ${app.displayName}" to st.percent
           FlowState.Verifying -> "Verifying ${app.displayName}" to -1
           FlowState.Installing -> "Installing ${app.displayName}" to -1
+          is FlowState.WaitingForNetwork -> "Waiting for a connection" to -1
           is FlowState.Blocked -> st.message to -1
           is FlowState.Failed -> st.message to -1
           FlowState.Idle -> "Idle" to -1
@@ -69,9 +74,12 @@ class DownloadWorker(
         runCatching { setForeground(foregroundInfo(app.id, app.displayName, text, pct)) }
       }
     }
-    UpdateFlow(ctx, client, installer).run(app, release) { state -> publish(id, state) }
-    notifier.cancel()
-    return Result.success()
+    UpdateFlow(ctx, client, installer).run(app, release) { state -> publish(id, state) }.let { done ->
+      notifier.cancel()
+      // A dropped connection is not a failure to report: ask WorkManager to run again. The
+      // NETWORK_CONNECTED constraint means the retry waits for the network instead of failing.
+      return if (done) Result.success() else Result.retry()
+    }
   }
 
   private fun foregroundInfo(appId: String, name: String, text: String, pct: Int): ForegroundInfo {
@@ -120,6 +128,12 @@ class DownloadWorker(
     fun enqueue(ctx: Context, appId: String) {
       val request = OneTimeWorkRequestBuilder<DownloadWorker>()
         .setInputData(Data.Builder().putString(KEY_APP_ID, appId).build())
+        // Wait for a connection instead of failing while offline: a queued update survives the
+        // network dropping, and the retry after a mid-download drop resumes the partial file.
+        .setConstraints(
+          Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+        )
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
         .build()
       WorkManager.getInstance(ctx).enqueueUniqueWork(
         UpdatePlanner.workName(appId),

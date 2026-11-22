@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,13 +18,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.hermes.updater.ui.CatalogCopy
 import app.hermes.updater.ui.HermesTheme
@@ -274,6 +282,8 @@ class MainActivity : ComponentActivity() {
         .safeDrawingPadding()
         .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
+      // Header: identity + last check on the left, the batch/refetch/pins controls on the
+      // right. One compact line-height each so the five cards below own the screen.
       Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -282,7 +292,7 @@ class MainActivity : ComponentActivity() {
         Column {
           Text(
             "Hermes",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.primary,
           )
           Text(
@@ -298,16 +308,36 @@ class MainActivity : ComponentActivity() {
             Button(
               onClick = { onUpdateAllTap(pending) },
               enabled = !runningAny && !checking,
-              modifier = Modifier.padding(bottom = 2.dp),
+              modifier = Modifier.height(30.dp),
               shape = MaterialTheme.shapes.small,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
             ) {
-              Text(if (runningAny) "Updating ${pending.size}…" else "Update all (${pending.size})")
+              Text(
+                if (runningAny) "Updating ${pending.size}…" else "Update all (${pending.size})",
+                style = MaterialTheme.typography.labelMedium,
+              )
             }
           }
-          TextButton(onClick = { refreshKey++ }, enabled = !checking) {
-            Text(if (checking) "Checking…" else "Check now")
+          Row {
+            TextButton(
+              onClick = { refreshKey++ },
+              enabled = !checking,
+              modifier = Modifier.height(32.dp),
+              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+              Text(
+                if (checking) "Checking…" else "Check now",
+                style = MaterialTheme.typography.labelMedium,
+              )
+            }
+            TextButton(
+              onClick = { showPins = true },
+              modifier = Modifier.height(32.dp),
+              contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+              Text("Pins", style = MaterialTheme.typography.labelMedium)
+            }
           }
-          TextButton(onClick = { showPins = true }) { Text("Pins") }
         }
       }
 
@@ -331,6 +361,8 @@ class MainActivity : ComponentActivity() {
             failed = row.failed,
             available = row.available,
           )
+          val pct = CatalogCopy.progressPercent(state)
+          val downloading = state is FlowState.Downloading
           val tones = LocalHermesTones.current
           val toneColor: Color = when (line.tone) {
             Tone.GOOD -> tones.success
@@ -341,73 +373,101 @@ class MainActivity : ComponentActivity() {
           }
 
           Card(
-            Modifier.fillMaxWidth().padding(vertical = 5.dp),
+            Modifier.fillMaxWidth().padding(vertical = 4.dp),
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
               containerColor = MaterialTheme.colorScheme.surfaceVariant,
             ),
             border = hermesCardBorder,
           ) {
-            Column(Modifier.padding(14.dp)) {
-              Text(
-                row.app.displayName,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-              )
-              Spacer(Modifier.height(4.dp))
+            Column(Modifier.padding(10.dp)) {
+              // ONE dense row: identity + versions on the left, the single action and the
+              // open/share icon actions on the right. Nothing stacks full-width any more.
               Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
               ) {
-                Text(
-                  CatalogCopy.installedLabel(row.installed),
-                  style = MaterialTheme.typography.bodySmall,
-                  color = tones.muted,
-                )
-                Text(
-                  CatalogCopy.latestLabel(row.latest, row.failed),
-                  style = MaterialTheme.typography.bodySmall,
-                  color = tones.muted,
-                )
+                Column(Modifier.weight(1f)) {
+                  Text(
+                    row.app.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                  )
+                  Text(
+                    "${CatalogCopy.installedLabel(row.installed)} · " +
+                      CatalogCopy.latestLabel(row.latest, row.failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = tones.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                  )
+                  // "Up to date" is the one status with nothing to act on — it stays implicit
+                  // so an up-to-date app costs a single line instead of two.
+                  if (line.tone != Tone.GOOD) {
+                    Text(
+                      line.text,
+                      style = MaterialTheme.typography.bodySmall,
+                      fontWeight = if (line.tone == Tone.BAD) FontWeight.SemiBold
+                      else FontWeight.Normal,
+                      color = toneColor,
+                      maxLines = 2,
+                      overflow = TextOverflow.Ellipsis,
+                    )
+                  }
+                }
+                // The card's one primary action as a compact pill. While the bytes are moving
+                // the pill is replaced by the live percent, so the row never grows for it.
+                if (downloading) {
+                  Text(
+                    pct?.let { "$it%" } ?: "…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                  )
+                } else if (action != null) {
+                  Button(
+                    onClick = { onUpdateTap(row) },
+                    enabled = !running && !flow.isBusy,
+                    modifier = Modifier.height(32.dp),
+                    shape = MaterialTheme.shapes.small,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                  ) {
+                    Text(action, style = MaterialTheme.typography.labelMedium)
+                  }
+                }
+                // Launch the installed app without leaving Hermes. Hidden when not installed
+                // (NOT_INSTALLED) or while its update is running.
+                if (row.installed != CatalogCopy.NOT_INSTALLED && !running) {
+                  IconButton(onClick = { openApp(row) }) {
+                    Icon(
+                      Icons.Filled.ExitToApp,
+                      contentDescription = "Open ${row.app.displayName}",
+                      modifier = Modifier.size(18.dp),
+                      tint = tones.muted,
+                    )
+                  }
+                }
+                // Offer the installed build to another phone. Only the third-party apps the
+                // catalog marks shareable get this; Hermes never shares itself.
+                if (row.app.shareable && row.installed != CatalogCopy.NOT_INSTALLED && !running) {
+                  IconButton(onClick = { onShareTap(row) }) {
+                    Icon(
+                      Icons.Filled.Share,
+                      contentDescription = "Share ${row.app.displayName}",
+                      modifier = Modifier.size(18.dp),
+                      tint = tones.muted,
+                    )
+                  }
+                }
               }
-              Spacer(Modifier.height(8.dp))
-              Text(
-                line.text,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (line.tone == Tone.BAD) FontWeight.SemiBold else FontWeight.Normal,
-                color = toneColor,
-              )
-              CatalogCopy.progressPercent(state)?.let { pct ->
-                Spacer(Modifier.height(8.dp))
+              // Thin progress rule under the row, only while the download is actually moving.
+              if (downloading) {
                 LinearProgressIndicator(
-                  progress = { pct / 100f },
-                  modifier = Modifier.fillMaxWidth(),
+                  progress = { (pct ?: 0) / 100f },
+                  modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 )
-              }
-              if (action != null) {
-                Button(
-                  onClick = { onUpdateTap(row) },
-                  enabled = !running && !flow.isBusy,
-                  modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                  shape = MaterialTheme.shapes.small,
-                ) { Text(action) }
-              }
-              // Launch the installed app without leaving Hermes. Hidden when not installed
-              // (NOT_INSTALLED) or while its update is running.
-              if (row.installed != CatalogCopy.NOT_INSTALLED && !running) {
-                TextButton(
-                  onClick = { openApp(row) },
-                  modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                ) { Text("Open") }
-              }
-              // Offer the installed build to another phone. Only the third-party apps the
-              // catalog marks shareable get this; Hermes never shares itself.
-              if (row.app.shareable && row.installed != CatalogCopy.NOT_INSTALLED && !running) {
-                TextButton(
-                  onClick = { onShareTap(row) },
-                  modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                ) { Text("Share") }
               }
             }
           }

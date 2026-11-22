@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.10
+
+### Fixed — a dropped connection no longer throws the download away
+
+- **The partial file is kept.** A dropped connection mid-download used to delete the `.part` file
+  and report "Download failed — check the connection and try again", so a 40 MB download that died
+  at 80 % started again from zero. The file is now kept and the card reads
+  *"Connection lost — the download will resume when it is back"*.
+- **The retry resumes instead of restarting.** The next attempt sends `Range: bytes=<done>-`; a
+  `206` appends, a `200` (server ignored the range) truncates and restarts rather than corrupting
+  the file.
+- **WorkManager waits for the network.** Downloads are enqueued with a `NETWORK_CONNECTED`
+  constraint and exponential backoff, and a transient drop returns `Result.retry()` — so the
+  update completes on its own when the internet comes back, with no tap needed.
+- Failures are now classified: a connection drop is transient (retry), an HTTP error such as 404
+  is permanent (no pointless retry loop).
+- The fail-closed gate is untouched: checksum and signing-certificate verification still runs on
+  the complete file before anything is offered to the installer.
+- New tests: `GitHubClientDownloadTest` (206 appends, 200 truncates, no `Range` on a fresh
+  download, 404 is permanent, an IO failure keeps the partial file, plain http is refused before
+  connecting, progress and unknown-total behaviour) and a `CatalogCopy` case for the new state.
+
+### Changed — one compact page
+
+- The five catalog apps now fit on **one screen**. Each card is a single dense row (name, installed
+  and latest versions, status only when it is not "Up to date") with the Update action as a compact
+  pill and Open/Share as icon actions, instead of five stacked full-width elements per card.
+
 ## 0.1.9
 
 ### Added — Hermes Monitor is now tracked

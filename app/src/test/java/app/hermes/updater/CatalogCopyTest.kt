@@ -58,6 +58,15 @@ class CatalogCopyTest {
   }
 
   @Test
+  fun waitingForNetworkIsWarnNotBadAndStillRunning() {
+    val s = status(state = FlowState.WaitingForNetwork("Connection lost — will resume"))
+    assertEquals("Connection lost — will resume", s.text)
+    assertEquals(Tone.WARN, s.tone)
+    assertTrue(CatalogCopy.isRunning(FlowState.WaitingForNetwork("x")))
+    assertNull(CatalogCopy.progressPercent(FlowState.WaitingForNetwork("x")))
+  }
+
+  @Test
   fun blockedAndFailedKeepTheirExactMessage() {
     assertEquals("Checksum mismatch", status(state = FlowState.Blocked("Checksum mismatch")).text)
     assertEquals("Offline", status(state = FlowState.Failed("Offline")).text)

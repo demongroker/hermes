@@ -7,6 +7,29 @@ import java.net.URL
 /** One release asset (an APK or its `.sha256`). */
 data class Asset(val name: String, val url: String, val sizeBytes: Long)
 
+/**
+ * Outcome of one download attempt.
+ *
+ * The split matters: an [Offline] failure leaves a usable partial file that the next attempt
+ * resumes from, while an [HttpError] means the server answered and retrying cannot help.
+ */
+sealed interface DownloadResult {
+  /** The whole body is on disk. */
+  data object Ok : DownloadResult
+
+  /** Connection dropped or timed out — transient, resume the partial file. */
+  data class Offline(val detail: String?) : DownloadResult
+
+  /** The server answered with a status we cannot use (404, 403, 5xx…). */
+  data class HttpError(val code: Int) : DownloadResult
+
+  /** The URL itself was refused (anything but https). */
+  data class Rejected(val reason: String) : DownloadResult
+}
+
+/** True when the failure is a network problem that a retry may fix. */
+val DownloadResult.transient: Boolean get() = this is DownloadResult.Offline
+
 /** The latest release of one catalog app. */
 data class LatestRelease(
   val appId: String,
@@ -63,24 +86,33 @@ class GitHubClient(
 
   /**
    * Streams a release asset to [dest] (caller passes a `.part` file). HTTPS only, no token,
-   * progress in percent (-1 when the total is unknown). Returns false on any failure —
-   * the caller deletes the partial file.
+   * progress in percent (-1 when the total is unknown).
+   *
+   * **Resumable**: when [dest] already holds bytes from an earlier attempt, the request asks for
+   * `Range: bytes=<done>-`. A `206` means the server honoured it and the body is appended; a `200`
+   * means it did not, so the file is truncated and restarted — appending there would corrupt it.
    */
-  fun download(url: String, dest: java.io.File, onProgress: (Int) -> Unit): Boolean {
-    if (!url.startsWith("https://")) return false
+  fun download(url: String, dest: java.io.File, onProgress: (Int) -> Unit): DownloadResult {
+    if (!url.startsWith("https://")) return DownloadResult.Rejected("not an https URL")
+    val resumeFrom = if (dest.exists()) dest.length() else 0L
     val conn = connectionFactory(url)
     return try {
       conn.instanceFollowRedirects = true
       conn.connectTimeout = 15_000
       conn.readTimeout = 60_000
       conn.setRequestProperty("User-Agent", "Hermes-Updater")
-      if (conn.responseCode != 200) return false
-      val total = conn.contentLengthLong
+      if (resumeFrom > 0) conn.setRequestProperty("Range", "bytes=$resumeFrom-")
+      val code = conn.responseCode
+      if (code != 200 && code != 206) return DownloadResult.HttpError(code)
+      val append = code == 206 && resumeFrom > 0
+      val total = conn.contentLengthLong.let { len ->
+        if (len > 0) (if (append) resumeFrom + len else len) else -1L
+      }
       dest.parentFile?.mkdirs()
       conn.inputStream.use { input ->
-        dest.outputStream().use { out ->
+        java.io.FileOutputStream(dest, append).use { out ->
           val buffer = ByteArray(1 shl 16)
-          var done = 0L
+          var done = if (append) resumeFrom else 0L
           while (true) {
             val read = input.read(buffer)
             if (read <= 0) break
@@ -90,9 +122,9 @@ class GitHubClient(
           }
         }
       }
-      true
+      DownloadResult.Ok
     } catch (e: Throwable) {
-      false
+      DownloadResult.Offline(e.javaClass.simpleName)
     } finally {
       runCatching { conn.disconnect() }
     }

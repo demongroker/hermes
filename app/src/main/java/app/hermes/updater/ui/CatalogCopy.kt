@@ -31,6 +31,7 @@ object CatalogCopy {
       StatusLine(if (state.percent >= 0) "Downloading ${state.percent}%" else "Downloading…", Tone.BUSY)
     state is FlowState.Verifying -> StatusLine("Verifying checksum and signature…", Tone.BUSY)
     state is FlowState.Installing -> StatusLine("Opening the system installer…", Tone.BUSY)
+    state is FlowState.WaitingForNetwork -> StatusLine(state.message, Tone.WARN)
     state is FlowState.Blocked -> StatusLine(state.message, Tone.BAD)
     state is FlowState.Failed -> StatusLine(state.message, Tone.BAD)
     row_missing(installed) && latest != null -> StatusLine("Not installed", Tone.WARN)
@@ -62,7 +63,8 @@ object CatalogCopy {
 
   /** True while a download/verify/install is in flight — the action must be disabled then. */
   fun isRunning(state: FlowState): Boolean =
-    state is FlowState.Downloading || state is FlowState.Verifying || state is FlowState.Installing
+    state is FlowState.Downloading || state is FlowState.Verifying ||
+      state is FlowState.Installing || state is FlowState.WaitingForNetwork
 
   fun progressPercent(state: FlowState): Int? =
     (state as? FlowState.Downloading)?.percent?.takeIf { it >= 0 }

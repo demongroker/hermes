@@ -35,7 +35,11 @@ class BackgroundDownloadTest {
   @Test
   fun openActionOnlyForInstalledApps() {
     val main = File(root, "app/src/main/java/app/hermes/updater/MainActivity.kt").readText()
-    assertTrue(main.contains("\"Open\""))
+    // The Open action is an icon button now; its contentDescription still carries the label.
+    assertTrue(
+      "Open must stay gated on the app being installed",
+      main.contains("contentDescription = \"Open \${row.app.displayName}\""),
+    )
     assertTrue(main.contains("row.installed != CatalogCopy.NOT_INSTALLED"))
   }
 
