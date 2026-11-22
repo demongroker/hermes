@@ -36,6 +36,9 @@ object AppCatalog {
   private const val VELA_PIN =
     "3f6aaaf0049ee820cecd478e43cda23041a6179371bfa870a196c6390fdb4aa3"
 
+  private const val HERMES_MONITOR_PIN =
+    "c2f2214bd66bea25e640746741f726c019481228d4aca387123c8d4812ae54d9"
+
   val apps: List<CatalogApp> = listOf(
     CatalogApp(
       id = "videodroid",
@@ -73,6 +76,16 @@ object AppCatalog {
       assetPrefix = "hermes-",
       // Pinned from the first signed release (v0.1.0). Hermes can now update itself.
       certPins = listOf(HERMES_PIN),
+    ),
+    CatalogApp(
+      id = "hermes-monitor",
+      displayName = "Hermes Monitor",
+      packageName = "com.demongroker.hermesmonitor",
+      repo = "demongroker/hermes-monitor-android",
+      assetPrefix = "hermes-monitor-",
+      // Pinned from the first signed release (v1.0.0). Like Hermes itself, it is not
+      // shareable — it is ours, not a third-party app.
+      certPins = listOf(HERMES_MONITOR_PIN),
     ),
   )
 

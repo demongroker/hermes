@@ -10,12 +10,26 @@ import org.junit.Test
 class AppCatalogTest {
 
   @Test
-  fun exactlyFourAppsAreTracked() {
-    assertEquals(4, AppCatalog.apps.size)
+  fun exactlyFiveAppsAreTracked() {
+    assertEquals(5, AppCatalog.apps.size)
     assertEquals(
-      setOf("com.xerxes.videodroid", "com.demongroker.jellyamp", "app.vela.player", "app.hermes.updater"),
+      setOf(
+        "com.xerxes.videodroid",
+        "com.demongroker.jellyamp",
+        "app.vela.player",
+        "app.hermes.updater",
+        "com.demongroker.hermesmonitor",
+      ),
       AppCatalog.apps.map { it.packageName }.toSet(),
     )
+  }
+
+  @Test
+  fun hermesMonitorIsPinnedFromItsFirstSignedRelease() {
+    val monitor = AppCatalog.byId("hermes-monitor")!!
+    assertEquals("demongroker/hermes-monitor-android", monitor.repo)
+    assertEquals(1, monitor.certPins.size)
+    assertEquals(64, monitor.certPins.single().length)
   }
 
   @Test

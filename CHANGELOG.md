@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.9
+
+### Added — Hermes Monitor is now tracked
+
+- The **Hermes Monitor** Android app (`com.demongroker.hermesmonitor`) appears in the list and is
+  update-checked like the other four, pinned from its first signed release (v1.0.0) and reading
+  releases from `demongroker/hermes-monitor-android`.
+- Like Hermes itself it is **not shareable** — it is ours, not a third-party app, so the shareable
+  set stays exactly VideoDroid, JellyAmp and Vela.
+- Catalog test updated to five apps, with a new test asserting the Monitor's repo and pin.
+
 ## 0.1.8
 
 ### Added — Share the app itself
