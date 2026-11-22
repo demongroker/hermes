@@ -17,6 +17,11 @@ data class CatalogApp(
   /** Asset name prefix used to tell this app's APK apart from others in a release. */
   val assetPrefix: String?,
   val certPins: List<String>,
+  /**
+   * Whether the installed APK may be offered to other apps through the share sheet. Only the
+   * three third-party apps Hermes tracks — never Hermes itself.
+   */
+  val shareable: Boolean = false,
 )
 
 object AppCatalog {
@@ -39,6 +44,7 @@ object AppCatalog {
       repo = "demongroker/video-droid",
       assetPrefix = "VideoDroid-",
       certPins = listOf(VIDEODROID_PIN),
+      shareable = true,
     ),
     CatalogApp(
       id = "jellyamp",
@@ -47,6 +53,7 @@ object AppCatalog {
       repo = "demongroker/jellyamp",
       assetPrefix = "jellyamp-",
       certPins = listOf(JELLYAMP_PIN),
+      shareable = true,
     ),
     CatalogApp(
       id = "vela",
@@ -56,6 +63,7 @@ object AppCatalog {
       repo = "demongroker/vela-build",
       assetPrefix = "vela-",
       certPins = listOf(VELA_PIN),
+      shareable = true,
     ),
     CatalogApp(
       id = "hermes",

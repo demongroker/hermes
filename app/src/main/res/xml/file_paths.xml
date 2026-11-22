@@ -2,4 +2,6 @@
 <paths>
     <!-- Only the update downloads dir is shareable, never the whole cache. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Copies of installed APKs offered through the share sheet. -->
+    <cache-path name="shared_apk" path="shared/" />
 </paths>

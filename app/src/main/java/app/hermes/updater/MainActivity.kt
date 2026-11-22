@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +59,7 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val installer = ApkInstaller(this)
+    val sharer = ApkSharer(this)
     val client = GitHubClient(tokenProvider = { TokenStore(this).token() })
     val flow = UpdateFlow(this, client, installer)
     UpdateWorker.schedule(this)
@@ -65,14 +67,19 @@ class MainActivity : ComponentActivity() {
     setContent {
       HermesTheme {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-          AppList(installer = installer, client = client, flow = flow)
+          AppList(installer = installer, sharer = sharer, client = client, flow = flow)
         }
       }
     }
   }
 
   @Composable
-  private fun AppList(installer: ApkInstaller, client: GitHubClient, flow: UpdateFlow) {
+  private fun AppList(
+    installer: ApkInstaller,
+    sharer: ApkSharer,
+    client: GitHubClient,
+    flow: UpdateFlow,
+  ) {
     var rows by remember { mutableStateOf<List<UpdateRow>>(emptyList()) }
     var status by remember { mutableStateOf("Checking… (0/${AppCatalog.apps.size})") }
     var lastChecked by remember { mutableStateOf<String?>(null) }
@@ -155,6 +162,17 @@ class MainActivity : ComponentActivity() {
     fun openApp(row: UpdateRow) {
       val intent = DownloadWorker.launchIntent(this, row.app.packageName) ?: return
       runCatching { startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
+
+    fun onShareTap(row: UpdateRow) {
+      // Copying a tens-of-MB APK must not run on the main thread; the chooser is started from
+      // inside [ApkSharer.share] once the copy is done.
+      scope.launch {
+        val error = withContext(Dispatchers.IO) { sharer.share(row.app) }
+        if (error != null) {
+          Toast.makeText(this@MainActivity, error, Toast.LENGTH_LONG).show()
+        }
+      }
     }
 
     fun onUpdateTap(row: UpdateRow) {
@@ -382,6 +400,14 @@ class MainActivity : ComponentActivity() {
                   onClick = { openApp(row) },
                   modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 ) { Text("Open") }
+              }
+              // Offer the installed build to another phone. Only the third-party apps the
+              // catalog marks shareable get this; Hermes never shares itself.
+              if (row.app.shareable && row.installed != CatalogCopy.NOT_INSTALLED && !running) {
+                TextButton(
+                  onClick = { onShareTap(row) },
+                  modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                ) { Text("Share") }
               }
             }
           }

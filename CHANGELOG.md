@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.8
+
+### Added — Share the app itself
+
+- **Share button on every tracked app card.** Copies the APK already installed on this phone into
+  the app's `cacheDir/shared/` and hands it to the Android share sheet as a package archive, so a
+  friend can sideload the exact same signed build. Hermes itself is deliberately **not** shareable.
+- The `shareable` flag lives on `CatalogApp`, and the share decision, the installed-version file
+  name and the not-installed / not-shareable / copy-failure reasons are unit-tested
+  (`ApkSharerTest`).
+- New `res/xml/file_paths.xml` entry exposes only that `shared/` cache path through the app's
+  `FileProvider`; the rest of the cache stays private.
+
 ## 0.1.7
 
 ### Added — Update all

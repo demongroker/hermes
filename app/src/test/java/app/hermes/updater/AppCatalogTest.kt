@@ -1,6 +1,7 @@
 package app.hermes.updater
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -49,6 +50,17 @@ class AppCatalogTest {
     AppCatalog.apps.forEach { app ->
       assertTrue("${app.displayName} has no signing pin", app.certPins.isNotEmpty())
     }
+  }
+
+  @Test
+  fun onlyTheThirdPartyAppsAreShareable() {
+    // Hermes offers the other three apps' APKs to other phones, never its own.
+    assertEquals(
+      setOf("videodroid", "jellyamp", "vela"),
+      AppCatalog.apps.filter { it.shareable }.map { it.id }.toSet(),
+    )
+    val hermes = AppCatalog.byId("hermes")!!
+    assertFalse(hermes.shareable)
   }
 
   @Test
