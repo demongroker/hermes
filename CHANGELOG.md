@@ -1,4 +1,14 @@
-# Changelog
+## 0.1.16
+
+### Changed
+- New bold adaptive launcher icon: white double-chevron wing on a deep-blue to cyan
+  gradient, with monochrome layer (Android 13+ themed icons) and regenerated legacy
+  mipmaps. No human figures or faces, readable at 48dp.
+
+### Added
+- Housekeeping bundle for IDEAS-001: OptiPlex status feed (`status.json`, served on the
+  Tailscale IP only) consumed by Hermes for heat/swap alerts, the 08:00 SGT morning card
+  and release-ready notices.
 
 ## 0.1.11
 
