@@ -44,7 +44,7 @@ object AppCatalog {
       id = "videodroid",
       displayName = "VideoDroid",
       packageName = "com.xerxes.videodroid",
-      repo = "demongroker/video-droid",
+      repo = "demongroker/video-droid-backup",
       assetPrefix = "VideoDroid-",
       certPins = listOf(VIDEODROID_PIN),
       shareable = true,
