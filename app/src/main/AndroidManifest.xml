@@ -12,13 +12,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!--
-      Package visibility (Android 11+): only the four apps in the catalog, so Hermes can read
+      Package visibility (Android 11+): only the five apps in the catalog, so Hermes can read
       their installed versions and signer certificates. Deliberately NOT QUERY_ALL_PACKAGES.
     -->
     <queries>
         <package android:name="com.xerxes.videodroid" />
         <package android:name="com.demongroker.jellyamp" />
         <package android:name="app.vela.player" />
+        <package android:name="com.demongroker.hermesmonitor" />
         <package android:name="app.hermes.updater" />
     </queries>
 
