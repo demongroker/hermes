@@ -8,23 +8,36 @@ import org.junit.Test
 /**
  * Source-level guards for the batch wiring. WorkManager itself cannot run on the JVM, so the
  * pure part is covered by [UpdatePlanTest]; these pin the facts that keep the wiring honest:
- * the batch reuses the per-app worker and its unique name, the header count and the enqueue
- * list come from one call, and parallel downloads get distinct notification ids.
+ * the batch hands ONE request to the existing worker and that worker walks it in order (one
+ * installer at a time), the header count and the enqueue list come from one call, and each app
+ * keeps its own notification id.
  */
 class UpdateBatchTest {
 
   private val root = File(System.getProperty("user.dir")).parentFile
 
   @Test
-  fun batchEnqueueReusesTheSingleAppWorkerAndItsUniqueName() {
+  fun batchIsOneRequestWalkedSequentiallyByTheSameWorker() {
     val worker = File(root, "app/src/main/java/app/hermes/updater/DownloadWorker.kt").readText()
     assertTrue("the batch must enqueue the existing worker", worker.contains("fun enqueueAll("))
     assertTrue(
-      "the batch must delegate to the single-app path so KEEP stays per app",
+      "the whole batch goes as one work request, so installs cannot overlap",
+      worker.contains("enqueue(ctx, appIds, BATCH_WORK_NAME)"),
+    )
+    assertTrue(
+      "the worker walks the list in order instead of fanning out",
+      worker.contains("for (id in ids)"),
+    )
+    assertTrue(
+      "the batch carries every app id in one payload",
+      worker.contains("putStringArray(KEY_APP_IDS"),
+    )
+    assertFalse(
+      "parallel fan-out would run two installers at once",
       worker.contains("appIds.forEach { enqueue(ctx, it) }"),
     )
     assertTrue(
-      "enqueue must use the planner's name, not a second copy of the format string",
+      "the single-app path still uses the planner's name, not a second copy of the format",
       worker.contains("UpdatePlanner.workName(appId)"),
     )
     assertFalse(
@@ -34,7 +47,7 @@ class UpdateBatchTest {
   }
 
   @Test
-  fun parallelDownloadsKeepTheirOwnNotification() {
+  fun eachAppKeepsItsOwnNotificationId() {
     val worker = File(root, "app/src/main/java/app/hermes/updater/DownloadWorker.kt").readText()
     assertTrue(worker.contains("fun notificationId(appId: String): Int"))
     assertTrue(worker.contains("NOTIFICATION_ID_BASE +"))

@@ -49,6 +49,33 @@
             android:foregroundServiceType="dataSync"
             tools:replace="android:foregroundServiceType" />
 
+        <!--
+          The installer's own verdict, delivered through the session commit PendingIntent.
+          Not exported: only this app can post to it.
+        -->
+        <receiver
+            android:name=".InstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.hermes.updater.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          Safety net for installs launched through ACTION_VIEW (and a missed session callback):
+          PACKAGE_ADDED / PACKAGE_REPLACED is what Android guarantees once a package really is
+          installed.
+        -->
+        <receiver
+            android:name=".InstallEventsReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
         <!-- Shares the downloaded APK with the system installer only (cache/updates). -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -33,25 +33,14 @@ class UpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker
       if (installed != null && !Versions.isNewer(latestVersion, installed)) null
       else app.displayName to latestVersion
     }
-    if (available.isNotEmpty()) notify(ctx, available)
+    if (available.isNotEmpty()) {
+      UpdateNotifier.available(
+        ctx,
+        available.size,
+        available.joinToString(", ") { (name, version) -> "$name $version" },
+      )
+    }
     return Result.success()
-  }
-
-  private fun notify(ctx: Context, updates: List<Pair<String, String>>) {
-    val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    nm.createNotificationChannel(
-      NotificationChannel(CHANNEL, "App updates", NotificationManager.IMPORTANCE_DEFAULT),
-    )
-    val text = updates.joinToString(", ") { (name, version) -> "$name $version" }
-    nm.notify(
-      1,
-      NotificationCompat.Builder(ctx, CHANNEL)
-        .setSmallIcon(android.R.drawable.stat_sys_download_done)
-        .setContentTitle("${updates.size} update(s) available")
-        .setContentText(text)
-        .setAutoCancel(true)
-        .build(),
-    )
   }
 
   companion object {

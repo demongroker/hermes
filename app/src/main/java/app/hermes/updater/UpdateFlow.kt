@@ -85,8 +85,12 @@ class UpdateFlow(
         }
         GateResult.Allowed -> {
           onState(FlowState.Installing)
-          if (!installer.install(dest)) {
+          // Record the hand-off: from here the installer's own result (or the timeout
+          // fallback) decides what the card shows next.
+          InstallCoordinator.begin(app.id)
+          if (!installer.install(app.id, dest)) {
             onState(FlowState.Failed("Could not open the system installer."))
+            InstallCoordinator.apply(app.id, InstallEvent.Failed)
           }
         }
       }

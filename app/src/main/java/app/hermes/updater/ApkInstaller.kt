@@ -1,8 +1,11 @@
 package app.hermes.updater
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.os.Build
 import android.net.Uri
 import androidx.core.content.FileProvider
 import java.io.File
@@ -70,8 +73,49 @@ class ApkInstaller(private val context: Context) {
       installedCerts = installedInfo(app.packageName)?.certs,
     )
 
-  /** Only called after [verify] returned [GateResult.Allowed]. */
-  fun install(file: File): Boolean = runCatching {
+  /**
+   * Only called after [verify] returned [GateResult.Allowed].
+   *
+   * Prefers a real [PackageInstaller] session: unlike `ACTION_VIEW` it reports the outcome —
+   * success, `STATUS_FAILURE_ABORTED` (the owner backed out), or a failure — which is what
+   * keeps the card from hanging on "Opening the system installer…". Falls back to the old
+   * intent on any refusal (old Android, or a package installer that will not take a session).
+   */
+  fun install(appId: String, file: File): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val viaSession = runCatching { installViaSession(appId, file) }.getOrDefault(false)
+      if (viaSession) return true
+    }
+    return installViaIntent(file)
+  }
+
+  private fun installViaSession(appId: String, file: File): Boolean {
+    val installer = context.packageManager.packageInstaller
+    val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+    val sessionId = installer.createSession(params)
+    val session = installer.openSession(sessionId)
+    try {
+      session.openWrite("apk", 0, file.length()).use { out ->
+        file.inputStream().use { input -> input.copyTo(out) }
+        session.fsync(out)
+      }
+      val intent = Intent(context, InstallStatusReceiver::class.java)
+        .setAction(InstallStatusReceiver.ACTION)
+        .putExtra(InstallStatusReceiver.EXTRA_APP_ID, appId)
+      val pending = PendingIntent.getBroadcast(
+        context,
+        sessionId,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+      )
+      session.commit(pending.intentSender)
+      return true
+    } finally {
+      session.close()
+    }
+  }
+
+  private fun installViaIntent(file: File): Boolean = runCatching {
     val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
     val intent = Intent(Intent.ACTION_VIEW).apply {
       setDataAndType(uri, "application/vnd.android.package-archive")

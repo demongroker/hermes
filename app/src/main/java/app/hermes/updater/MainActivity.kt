@@ -1,7 +1,10 @@
 package app.hermes.updater
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.os.Build
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.text.format.DateFormat
@@ -64,8 +67,17 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
+  /** Bumped in [onResume] so returning from the installer refreshes every card. */
+  private val resumeTick = mutableStateOf(0)
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    // Android 13+ gates notifications behind a runtime permission; ask once at startup.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+      checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) {
+      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+    }
     val installer = ApkInstaller(this)
     val sharer = ApkSharer(this)
     val client = GitHubClient(tokenProvider = { TokenStore(this).token() })
@@ -79,6 +91,13 @@ class MainActivity : ComponentActivity() {
         }
       }
     }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    // Coming back from the system installer must refresh the cards immediately, not on the
+    // next 24 h check: this is what clears "Opening the system installer…".
+    resumeTick.value++
   }
 
   @Composable
@@ -102,6 +121,14 @@ class MainActivity : ComponentActivity() {
     var confirmBatch by remember { mutableStateOf<List<UpdateRow>?>(null) }
     val scope = rememberCoroutineScope()
     val timeFormat = remember { DateFormat.getTimeFormat(this) }
+
+    // Installer verdicts (success / cancelled / failed / timeout) live outside Compose state,
+    // so the card can never keep showing a stale "Working…".
+    val installPhases by InstallCoordinator.phases.collectAsState()
+
+    LaunchedEffect(resumeTick.value) {
+      if (resumeTick.value > 0) refreshKey++
+    }
 
     LaunchedEffect(refreshKey) {
       checking = true
@@ -343,7 +370,15 @@ class MainActivity : ComponentActivity() {
 
       LazyColumn(Modifier.fillMaxSize().padding(top = 8.dp)) {
         items(rows) { row ->
-          val state = downloadStates[row.app.id] ?: flowStates[row.app.id] ?: FlowState.Idle
+          val base = downloadStates[row.app.id] ?: flowStates[row.app.id] ?: FlowState.Idle
+          // Once an APK has been handed over, the installer machine drives the card. Byte and
+          // checksum progress still win while those are moving.
+          val installPhase = installPhases[row.app.id] ?: InstallPhase.IDLE
+          val state = when {
+            base is FlowState.Downloading || base is FlowState.Verifying -> base
+            installPhase != InstallPhase.IDLE -> InstallStateMachine.flowState(installPhase)
+            else -> base
+          }
           val running = CatalogCopy.isRunning(state)
           val line = CatalogCopy.status(
             pinned = row.pinned,
