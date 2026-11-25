@@ -53,9 +53,9 @@ object AppCatalog {
       id = "jellyamp",
       displayName = "JellyAmp",
       packageName = "com.demongroker.jellyamp",
-      // Signed APK releases are published by the backup mirror, not the source repo:
-      // the source repo stops at 1.2.9, so the updater never saw 1.2.10+.
-      repo = "demongroker/jellyamp-backup",
+      // Signed APK releases are published on the source repo again (1.2.14+);
+      // the backup mirror has no releases, so /releases/latest returns 404 there.
+      repo = "demongroker/jellyamp",
       assetPrefix = "jellyamp-",
       certPins = listOf(JELLYAMP_PIN),
       shareable = true,

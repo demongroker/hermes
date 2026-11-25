@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * UPD-JAMP-001: the phone showed "Latest 1.2.9" while the signed APKs were published on
- * jellyamp-backup. The updater builds its request from [AppCatalog.repo], picks the universal
+ * jellyamp. The updater builds its request from [AppCatalog.repo], picks the universal
  * APK with [GitHubClient.pickApk], and parses the release tag with `removePrefix("v")` — so
  * those three things are what this test pins, using the real v1.2.12 asset names.
  */
@@ -31,7 +31,7 @@ class GitHubClientReleaseTest {
   @Test
   fun jellyampResolvesV1212FromTheBackupRepoWithRealAssetNames() {
     val app = AppCatalog.byId("jellyamp")!!
-    assertEquals("demongroker/jellyamp-backup", app.repo)
+    assertEquals("demongroker/jellyamp", app.repo)
     assertEquals("jellyamp-", app.assetPrefix)
 
     val picked = GitHubClient.pickApk(app, realJellyampAssets)

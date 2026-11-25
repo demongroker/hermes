@@ -10,7 +10,7 @@ class JellyAmpReleaseTest {
   @Test
   fun jellyampUsesTheSigningMirrorAndTheUniversalApk() {
     val app = AppCatalog.apps.first { it.displayName == "JellyAmp" }
-    assertEquals("demongroker/jellyamp-backup", app.repo)
+    assertEquals("demongroker/jellyamp", app.repo)
     assertEquals("jellyamp-", app.assetPrefix)
     val assets = listOf(
       Asset("jellyamp-1.2.13.apk", "https://example.test/jellyamp-1.2.13.apk", 1),
