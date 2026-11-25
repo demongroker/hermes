@@ -81,7 +81,42 @@ class ApkInstaller(private val context: Context) {
    * keeps the card from hanging on "Opening the system installer…". Falls back to the old
    * intent on any refusal (old Android, or a package installer that will not take a session).
    */
+  /** A2: the "install unknown apps" permission is a hard prerequisite on 26+. */
+  fun canInstallApps(): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+
+  /** Opens Settings so the owner can grant the updater the unknown-sources permission. */
+  fun openInstallPermissions() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    runCatching {
+      context.startActivity(
+        Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+          .setData(android.net.Uri.parse("package:" + context.packageName))
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+      )
+    }
+  }
+
+  /** versionCode of the downloaded APK, read from its manifest without installing it. */
+  fun archiveVersionCode(file: File): Long? = runCatching {
+    val info = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0) ?: return null
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+  }.getOrNull()
+
+  /** versionCode currently installed for [packageName], or null when absent. */
+  fun installedVersionCode(packageName: String): Long? = runCatching {
+    val info = context.packageManager.getPackageInfo(packageName, 0)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else info.versionCode.toLong()
+  }.getOrNull()
+
+  /** A3 fallback: open the downloaded APK ourselves through the FileProvider. */
+  fun installManually(file: File): Boolean = installViaIntent(file)
+
   fun install(appId: String, file: File): Boolean {
+    if (!canInstallApps()) {
+      openInstallPermissions()
+      return false
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val viaSession = runCatching { installViaSession(appId, file) }.getOrDefault(false)
       if (viaSession) return true

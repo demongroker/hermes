@@ -89,7 +89,12 @@ class UpdateFlow(
           // fallback) decides what the card shows next.
           InstallCoordinator.begin(app.id)
           if (!installer.install(app.id, dest)) {
-            onState(FlowState.Failed("Could not open the system installer."))
+            val message = if (!installer.canInstallApps()) {
+              "Allow \"install unknown apps\" for Hermes, then try again."
+            } else {
+              "Could not open the system installer."
+            }
+            onState(FlowState.Failed(message))
             InstallCoordinator.apply(app.id, InstallEvent.Failed)
           }
         }

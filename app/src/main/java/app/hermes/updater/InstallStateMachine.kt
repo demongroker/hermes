@@ -57,6 +57,14 @@ object InstallStateMachine {
 
   val initial: InstallPhase get() = InstallPhase.IDLE
 
+  /**
+   * Did the package manager already install what we were aiming at? Used before declaring a
+   * timeout a failure: the system installer can report success late (or the user can confirm
+   * from the recents screen after the callback was missed), and the app really is updated.
+   */
+  fun satisfiedByInstalled(target: Long?, installed: Long?): Boolean =
+    target != null && installed != null && installed >= target
+
   fun isTerminal(phase: InstallPhase): Boolean = when (phase) {
     InstallPhase.SUCCEEDED, InstallPhase.CANCELLED,
     InstallPhase.FAILED, InstallPhase.TIMED_OUT,
@@ -88,7 +96,7 @@ object InstallStateMachine {
   fun message(phase: InstallPhase): String? = when (phase) {
     InstallPhase.CANCELLED -> "Install cancelled"
     InstallPhase.FAILED -> "Install failed"
-    InstallPhase.TIMED_OUT -> "Install timed out — nothing was installed"
+    InstallPhase.TIMED_OUT -> "Install didn't finish — tap Install to try again"
     else -> null
   }
 
@@ -100,7 +108,8 @@ object InstallStateMachine {
     InstallPhase.SUCCEEDED -> FlowState.Idle
     InstallPhase.CANCELLED -> FlowState.Failed("Install cancelled")
     InstallPhase.FAILED -> FlowState.Failed("Install failed")
-    InstallPhase.TIMED_OUT -> FlowState.Failed("Install timed out — nothing was installed")
+    // The row goes back to a plain Install button so it can never sit on "Working…".
+    InstallPhase.TIMED_OUT -> FlowState.Idle
     else -> FlowState.Installing
   }
 }

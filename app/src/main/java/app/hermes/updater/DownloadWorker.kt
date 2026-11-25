@@ -126,7 +126,14 @@ class DownloadWorker(
 
         // Handed to the system installer: now wait for its actual result (success, the user
         // backing out, a failure, or the timeout fallback) before touching the next app.
-        val phase = InstallCoordinator.awaitTerminal(appId, InstallStateMachine.TIMEOUT_MS)
+        val apkFile = java.io.File(java.io.File(ctx.cacheDir, "updates"), "${app.id}-${release.tag}.apk")
+        val target = installer.archiveVersionCode(apkFile)
+        val phase = InstallCoordinator.awaitTerminal(
+          appId,
+          InstallStateMachine.TIMEOUT_MS,
+        ) {
+          InstallStateMachine.satisfiedByInstalled(target, installer.installedVersionCode(app.packageName))
+        }
         return reportOutcome(ctx, app, release.tag, phase)
       }
       return false
@@ -164,7 +171,8 @@ class DownloadWorker(
       }
       InstallPhase.TIMED_OUT -> {
         UpdateNotifier.failed(ctx, app.id, app.displayName, message ?: "Install timed out")
-        publish(app.id, FlowState.Failed(message ?: "Install timed out"))
+        // The card resets to Install; the reason is kept for the UI's snackbar.
+        publish(app.id, FlowState.Idle)
         InstallCoordinator.clear(app.id)
         true
       }
