@@ -33,10 +33,10 @@ class InstallSatisfactionTest {
   }
 
   @Test
-  fun `timeout resets the row instead of leaving it working`() {
+  fun `timeout offers a retry instead of leaving it working`() {
     val phase = InstallStateMachine.reduce(InstallPhase.WAITING_FOR_USER, InstallEvent.Timeout)
     assertEquals(InstallPhase.TIMED_OUT, phase)
-    assertEquals(FlowState.Idle, InstallStateMachine.flowState(phase))
+    assertEquals(FlowState.Failed(InstallRetry.TAP_TO_RETRY), InstallStateMachine.flowState(phase))
     assertNotNull(InstallStateMachine.message(phase))
   }
 

@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * One install phase per catalog app, shared between whoever starts an install (the download
@@ -18,6 +20,10 @@ object InstallCoordinator {
 
   private val _phases = MutableStateFlow<Map<String, InstallPhase>>(emptyMap())
   val phases = _phases.asStateFlow()
+
+  /** One APK at a time may be in Android's system installer, process-wide. */
+  private val installGate = Mutex()
+  suspend fun <T> withInstallGate(block: suspend () -> T): T = installGate.withLock { block() }
 
   fun phase(appId: String): InstallPhase = _phases.value[appId] ?: InstallPhase.IDLE
 
@@ -34,7 +40,7 @@ object InstallCoordinator {
    * High-priority "tap to install" heads-up while the system confirm dialog is up, so the
    * owner doesn't miss it if Hermes is backgrounded.
    */
-  fun notifyConfirmNeeded(context: Context, appId: String) {
+  fun notifyConfirmNeeded(context: Context, packageName: String) {
     runCatching {
       val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -46,14 +52,14 @@ object InstallCoordinator {
           ),
         )
       }
-      val app = AppCatalog.apps.firstOrNull { it.id == appId }
-      val text = "${app?.displayName ?: appId}: tap to finish installing"
+      val app = catalogByPackage(packageName)
+      val text = "${app?.displayName ?: packageName}: tap to finish installing"
       val pi = android.app.PendingIntent.getBroadcast(
         context,
-        appId.hashCode(),
+        packageName.hashCode(),
         Intent(context, InstallStatusReceiver::class.java)
           .setAction(InstallStatusReceiver.ACTION)
-          .putExtra(InstallStatusReceiver.EXTRA_APP_ID, appId),
+          .putExtra(InstallStatusReceiver.EXTRA_PACKAGE_NAME, packageName),
         android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
       )
       val notification = androidx.core.app.NotificationCompat.Builder(context, "install_confirm")
@@ -64,7 +70,7 @@ object InstallCoordinator {
         .setContentIntent(pi)
         .setAutoCancel(true)
         .build()
-      nm.notify(appId.hashCode(), notification)
+      nm.notify(packageName.hashCode(), notification)
     }
   }
 
@@ -101,7 +107,7 @@ class InstallStatusReceiver : BroadcastReceiver() {
 
   override fun onReceive(context: Context, intent: Intent) {
     if (intent.action != ACTION) return
-    val appId = intent.getStringExtra(EXTRA_APP_ID) ?: return
+    val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: return
     val status = intent.getIntExtra(
       android.content.pm.PackageInstaller.EXTRA_STATUS,
       android.content.pm.PackageInstaller.STATUS_FAILURE,
@@ -114,14 +120,15 @@ class InstallStatusReceiver : BroadcastReceiver() {
         confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(confirm) }
       }
-      InstallCoordinator.notifyConfirmNeeded(context, appId)
+      InstallCoordinator.notifyConfirmNeeded(context, packageName)
     }
-    InstallCoordinator.apply(appId, InstallStatus.eventFor(status))
+    InstallCoordinator.apply(packageName, InstallStatus.eventFor(status))
   }
 
   companion object {
     const val ACTION = "app.hermes.updater.INSTALL_STATUS"
-    const val EXTRA_APP_ID = "app_id"
+    const val EXTRA_PACKAGE_NAME = "package_name"
+    const val EXTRA_APP_ID = EXTRA_PACKAGE_NAME // legacy alias
   }
 }
 
@@ -137,7 +144,7 @@ class InstallEventsReceiver : BroadcastReceiver() {
       return
     }
     val packageName = intent.data?.schemeSpecificPart ?: return
-    val appId = AppCatalog.apps.firstOrNull { it.packageName == packageName }?.id ?: return
-    InstallCoordinator.apply(appId, InstallEvent.Succeeded)
+    InstallCoordinator.apply(packageName, InstallEvent.Succeeded)
+    UpdateNotifier.cancelForPackage(context, packageName)
   }
 }

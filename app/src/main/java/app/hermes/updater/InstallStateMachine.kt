@@ -95,8 +95,7 @@ object InstallStateMachine {
   /** The card's status line for a phase; null when the phase is not worth a line of its own. */
   fun message(phase: InstallPhase): String? = when (phase) {
     InstallPhase.CANCELLED -> "Install cancelled"
-    InstallPhase.FAILED -> "Install failed"
-    InstallPhase.TIMED_OUT -> "Install didn't finish — tap Install to try again"
+    InstallPhase.FAILED, InstallPhase.TIMED_OUT -> InstallRetry.TAP_TO_RETRY
     else -> null
   }
 
@@ -107,9 +106,7 @@ object InstallStateMachine {
   fun flowState(phase: InstallPhase): FlowState = when (phase) {
     InstallPhase.SUCCEEDED -> FlowState.Idle
     InstallPhase.CANCELLED -> FlowState.Failed("Install cancelled")
-    InstallPhase.FAILED -> FlowState.Failed("Install failed")
-    // The row goes back to a plain Install button so it can never sit on "Working…".
-    InstallPhase.TIMED_OUT -> FlowState.Idle
+    InstallPhase.FAILED, InstallPhase.TIMED_OUT -> FlowState.Failed(InstallRetry.TAP_TO_RETRY)
     else -> FlowState.Installing
   }
 }
@@ -127,4 +124,17 @@ object InstallStatus {
     android.content.pm.PackageInstaller.STATUS_PENDING_USER_ACTION -> InstallEvent.Handled
     else -> InstallEvent.Failed
   }
+}
+
+
+/**
+ * One automatic retry for an installer failure. A deliberate cancel or a success is never
+ * retried; after the budget is spent the UI offers a tappable retry instead.
+ */
+object InstallRetry {
+  const val MAX_ATTEMPTS = 2
+  const val TAP_TO_RETRY = "Install failed — tap to retry"
+
+  fun shouldRetry(phase: InstallPhase, attemptsMade: Int): Boolean =
+    attemptsMade < MAX_ATTEMPTS && (phase == InstallPhase.FAILED || phase == InstallPhase.TIMED_OUT)
 }

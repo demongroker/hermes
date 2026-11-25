@@ -30,6 +30,28 @@ sealed interface DownloadResult {
 /** True when the failure is a network problem that a retry may fix. */
 val DownloadResult.transient: Boolean get() = this is DownloadResult.Offline
 
+/** Typed outcome of a release check — the real failure reason reaches the card. */
+sealed interface ReleaseResult {
+  data class Ok(val release: LatestRelease) : ReleaseResult
+  data class HttpError(val code: Int) : ReleaseResult
+  data class Offline(val detail: String) : ReleaseResult
+  data class Missing(val detail: String) : ReleaseResult
+
+  /** Safe, short, user-facing text. Never carries a URL, header or token. */
+  val message: String get() = when (this) {
+    is Ok -> ""
+    is HttpError -> "GitHub replied HTTP $code"
+    is Offline -> "Connection lost ($detail)"
+    is Missing -> "Release had no usable APK ($detail)"
+  }
+}
+
+private sealed interface FetchResult {
+  data class Ok(val body: String) : FetchResult
+  data class HttpError(val code: Int) : FetchResult
+  data class Offline(val detail: String) : FetchResult
+}
+
 /** The latest release of one catalog app. */
 data class LatestRelease(
   val appId: String,
@@ -53,28 +75,36 @@ class GitHubClient(
   },
 ) {
 
-  fun latestRelease(app: CatalogApp): LatestRelease? {
-    val json = get("${API}/${app.repo}/releases/latest", auth = true) ?: return null
-    val release = JSONObject(json)
-    val tag = release.optString("tag_name").ifBlank { return null }
-    val assets = release.optJSONArray("assets") ?: return null
+  /** Compatibility wrapper; prefer [latestReleaseResult] when showing errors to the owner. */
+  fun latestRelease(app: CatalogApp): LatestRelease? =
+    (latestReleaseResult(app) as? ReleaseResult.Ok)?.release
 
-    val candidates = (0 until assets.length()).mapNotNull { i ->
-      val a = assets.optJSONObject(i) ?: return@mapNotNull null
+  fun latestReleaseResult(app: CatalogApp): ReleaseResult {
+    val json = when (val r = getTyped("${API}/${app.repo}/releases/latest", auth = true)) {
+      is FetchResult.Ok -> r.body
+      is FetchResult.HttpError -> return ReleaseResult.HttpError(r.code)
+      is FetchResult.Offline -> return ReleaseResult.Offline(r.detail)
+    }
+    val release = runCatching { JSONObject(json) }.getOrNull()
+      ?: return ReleaseResult.Missing("invalid JSON")
+    val tag = release.optString("tag_name").ifBlank { return ReleaseResult.Missing("empty tag") }
+    val array = release.optJSONArray("assets") ?: return ReleaseResult.Missing("no assets")
+    val candidates = (0 until array.length()).mapNotNull { i ->
+      val a = array.optJSONObject(i) ?: return@mapNotNull null
       val name = a.optString("name")
       val url = a.optString("browser_download_url")
       if (name.isBlank() || !url.startsWith("https://")) return@mapNotNull null
       Asset(name, url, a.optLong("size", 0L))
     }
-
-    val apk = pickApk(app, candidates) ?: return null
-    return LatestRelease(
+    val apk = pickApk(app, candidates)
+      ?: return ReleaseResult.Missing("no APK matched prefix ${app.assetPrefix ?: "any"}")
+    return ReleaseResult.Ok(LatestRelease(
       appId = app.id,
       tag = tag,
       body = release.optString("body"),
       apk = apk,
       sha256Asset = candidates.firstOrNull { it.name == "${apk.name}.sha256" },
-    )
+    ))
   }
 
   /**
@@ -125,6 +155,31 @@ class GitHubClient(
       DownloadResult.Ok
     } catch (e: Throwable) {
       DownloadResult.Offline(e.javaClass.simpleName)
+    } finally {
+      runCatching { conn.disconnect() }
+    }
+  }
+
+  private fun getTyped(url: String, auth: Boolean): FetchResult {
+    val conn = connectionFactory(url)
+    return try {
+      conn.instanceFollowRedirects = true
+      conn.connectTimeout = 15_000
+      conn.readTimeout = 25_000
+      conn.setRequestProperty("Accept", "application/vnd.github+json")
+      conn.setRequestProperty("User-Agent", "Hermes-Updater")
+      if (auth) {
+        tokenProvider()?.takeIf { it.isNotBlank() }?.let {
+          conn.setRequestProperty("Authorization", "Bearer $it")
+        }
+      }
+      when (val code = conn.responseCode) {
+        200 -> FetchResult.Ok(conn.inputStream.bufferedReader().use { it.readText() })
+        else -> FetchResult.HttpError(code)
+      }
+    } catch (t: Throwable) {
+      // Only the exception class, never its message (it may contain a URL or a header).
+      FetchResult.Offline(t.javaClass.simpleName)
     } finally {
       runCatching { conn.disconnect() }
     }

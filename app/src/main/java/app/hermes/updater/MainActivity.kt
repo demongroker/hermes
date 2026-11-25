@@ -147,21 +147,27 @@ class MainActivity : ComponentActivity() {
           )
         }
       }
+      try {
       var done = 0
       coroutineScope {
         AppCatalog.apps.forEach { app ->
           launch {
-            val latest = withContext(Dispatchers.IO) {
-              runCatching { client.latestRelease(app)?.tag?.removePrefix("v") }.getOrNull()
-            }
+            val result = withContext(Dispatchers.IO) { CheckRetry.latestRelease(client, app) }
+            val latest = (result as? ReleaseResult.Ok)?.release?.tag?.removePrefix("v")
+            val error = if (latest == null) result.message else null
             rows = rows.map { r ->
               if (r.app.id != app.id) r
               else {
                 // The card's "update available" flag and the batch decision are the SAME
                 // function — the header count and the enqueue list cannot drift apart.
-                val checked = r.copy(latest = latest, failed = latest == null)
+                val checked = r.copy(latest = latest, failed = latest == null, checkError = error)
                 checked.copy(available = UpdatePlanner.isUpdate(checked))
               }
+            }
+            if (latest == null) {
+              // A failed check must never leave the row stuck on "Working…".
+              flowStates.remove(app.id)
+              DownloadWorker.clear(app.id)
             }
             done++
             status = if (done == AppCatalog.apps.size) "Checked ${AppCatalog.apps.size} apps"
@@ -169,8 +175,15 @@ class MainActivity : ComponentActivity() {
           }
         }
       }
+      // On install success or app resume, re-read installed versions (done above) and
+      // clear any stale installer/progress state for cards that are now settled.
+      rows.filter { UpdateCardSync.isSettled(it.installed, it.latest) }.forEach { row ->
+        flowStates.remove(row.app.id)
+        DownloadWorker.clear(row.app.id)
+        InstallCoordinator.clear(row.app.packageName)
+      }
       lastChecked = timeFormat.format(Date())
-      checking = false
+      } finally { checking = false }
     }
 
     // Pure: the same list feeds the header count and the batch enqueue call.
@@ -183,15 +196,13 @@ class MainActivity : ComponentActivity() {
       // Hand the download to WorkManager: a coroutine in this scope dies when the Activity
       // stops, which is exactly why switching apps killed the Vela update at 3% with no
       // notification. The worker runs in the background and posts a progress notification.
-      flowStates[row.app.id] = FlowState.Downloading(-1)
-      DownloadWorker.enqueue(applicationContext, row.app.id)
+      DownloadWorker.enqueue(applicationContext, row.app.packageName)
     }
 
     fun startBatch(batch: List<UpdateRow>) {
       // One worker per app, each under its own unique name — parallel downloads, single-flight
       // per app. flowStates gives immediate feedback before the workers publish their own state.
-      batch.forEach { row -> flowStates[row.app.id] = FlowState.Downloading(-1) }
-      DownloadWorker.enqueueAll(applicationContext, batch.map { it.app.id })
+      DownloadWorker.enqueueAll(applicationContext, batch.map { it.app.packageName })
     }
 
     fun openApp(row: UpdateRow) {
@@ -373,8 +384,9 @@ class MainActivity : ComponentActivity() {
           val base = downloadStates[row.app.id] ?: flowStates[row.app.id] ?: FlowState.Idle
           // Once an APK has been handed over, the installer machine drives the card. Byte and
           // checksum progress still win while those are moving.
-          val installPhase = installPhases[row.app.id] ?: InstallPhase.IDLE
+          val installPhase = installPhases[row.app.packageName] ?: InstallPhase.IDLE
           val state = when {
+            UpdateCardSync.isSettled(row.installed, row.latest) -> FlowState.Idle
             base is FlowState.Downloading || base is FlowState.Verifying -> base
             installPhase != InstallPhase.IDLE -> InstallStateMachine.flowState(installPhase)
             else -> base
@@ -387,6 +399,7 @@ class MainActivity : ComponentActivity() {
             failed = row.failed,
             available = row.available,
             state = state,
+            checkError = row.checkError,
           )
           val action = CatalogCopy.action(
             running = running,

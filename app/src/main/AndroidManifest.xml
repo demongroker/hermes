@@ -76,6 +76,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- The failed-install notification's tap-to-retry action. -->
+        <receiver
+            android:name=".RetryInstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.hermes.updater.RETRY_INSTALL" />
+            </intent-filter>
+        </receiver>
+
         <!-- Shares the downloaded APK with the system installer only (cache/updates). -->
         <provider
             android:name="androidx.core.content.FileProvider"

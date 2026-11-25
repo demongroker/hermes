@@ -112,19 +112,19 @@ class ApkInstaller(private val context: Context) {
   /** A3 fallback: open the downloaded APK ourselves through the FileProvider. */
   fun installManually(file: File): Boolean = installViaIntent(file)
 
-  fun install(appId: String, file: File): Boolean {
+  fun install(packageName: String, file: File): Boolean {
     if (!canInstallApps()) {
       openInstallPermissions()
       return false
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      val viaSession = runCatching { installViaSession(appId, file) }.getOrDefault(false)
+      val viaSession = runCatching { installViaSession(packageName, file) }.getOrDefault(false)
       if (viaSession) return true
     }
     return installViaIntent(file)
   }
 
-  private fun installViaSession(appId: String, file: File): Boolean {
+  private fun installViaSession(packageName: String, file: File): Boolean {
     val installer = context.packageManager.packageInstaller
     val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
     val sessionId = installer.createSession(params)
@@ -136,7 +136,7 @@ class ApkInstaller(private val context: Context) {
       }
       val intent = Intent(context, InstallStatusReceiver::class.java)
         .setAction(InstallStatusReceiver.ACTION)
-        .putExtra(InstallStatusReceiver.EXTRA_APP_ID, appId)
+        .putExtra(InstallStatusReceiver.EXTRA_PACKAGE_NAME, packageName)
       val pending = PendingIntent.getBroadcast(
         context,
         sessionId,

@@ -25,6 +25,7 @@ object CatalogCopy {
     failed: Boolean,
     available: Boolean,
     state: FlowState,
+    checkError: String? = null,
   ): StatusLine = when {
     !pinned -> StatusLine("No signing pin — installs refused (fail closed)", Tone.BAD)
     state is FlowState.Downloading ->
@@ -37,7 +38,7 @@ object CatalogCopy {
     row_missing(installed) && latest != null -> StatusLine("Not installed", Tone.WARN)
     available -> StatusLine("Update available", Tone.WARN)
     latest == null && !failed -> StatusLine("Checking…", Tone.NEUTRAL)
-    failed -> StatusLine("Release check failed — tap Retry", Tone.BAD)
+    failed -> StatusLine(checkError?.let { "Release check failed — $it" } ?: "Release check failed — tap Retry", Tone.BAD)
     else -> StatusLine("Up to date", Tone.GOOD)
   }
 
@@ -64,7 +65,7 @@ object CatalogCopy {
   /** True while a download/verify/install is in flight — the action must be disabled then. */
   fun isRunning(state: FlowState): Boolean =
     state is FlowState.Downloading || state is FlowState.Verifying ||
-      state is FlowState.Installing || state is FlowState.WaitingForNetwork
+      state is FlowState.Installing
 
   fun progressPercent(state: FlowState): Int? =
     (state as? FlowState.Downloading)?.percent?.takeIf { it >= 0 }

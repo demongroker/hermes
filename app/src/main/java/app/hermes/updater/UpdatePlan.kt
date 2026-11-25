@@ -15,6 +15,7 @@ data class UpdateRow(
   val available: Boolean,
   val pinned: Boolean,
   val failed: Boolean = false,
+  val checkError: String? = null,
 )
 
 /** One app a batch tap will enqueue: the catalog id and the unique work name it maps to. */
@@ -57,6 +58,8 @@ object UpdatePlanner {
   fun pending(rows: List<UpdateRow>): List<UpdateRow> = rows.filter(::isUpdate)
 
   fun pendingIds(rows: List<UpdateRow>): List<String> = pending(rows).map { it.app.id }
+  /** Canonical job keys: package names, never catalog ids. */
+  fun pendingKeys(rows: List<UpdateRow>): List<String> = pending(rows).map { it.app.packageName }
 
   /**
    * The batch as WorkManager names: one unique name per pending app. Distinct names are what let

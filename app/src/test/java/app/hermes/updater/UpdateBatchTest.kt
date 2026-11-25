@@ -22,7 +22,7 @@ class UpdateBatchTest {
     assertTrue("the batch must enqueue the existing worker", worker.contains("fun enqueueAll("))
     assertTrue(
       "the whole batch goes as one work request, so installs cannot overlap",
-      worker.contains("enqueue(ctx, appIds, BATCH_WORK_NAME)"),
+      worker.contains("enqueue(ctx, packageNames, BATCH_WORK_NAME)"),
     )
     assertTrue(
       "the worker walks the list in order instead of fanning out",
@@ -30,7 +30,7 @@ class UpdateBatchTest {
     )
     assertTrue(
       "the batch carries every app id in one payload",
-      worker.contains("putStringArray(KEY_APP_IDS"),
+      worker.contains("putStringArray(KEY_PACKAGE_NAMES"),
     )
     assertFalse(
       "parallel fan-out would run two installers at once",
@@ -38,7 +38,7 @@ class UpdateBatchTest {
     )
     assertTrue(
       "the single-app path still uses the planner's name, not a second copy of the format",
-      worker.contains("UpdatePlanner.workName(appId)"),
+      worker.contains("UpdatePlanner.workName(packageName)"),
     )
     assertFalse(
       "the old inline name format must be gone",
@@ -49,7 +49,7 @@ class UpdateBatchTest {
   @Test
   fun eachAppKeepsItsOwnNotificationId() {
     val worker = File(root, "app/src/main/java/app/hermes/updater/DownloadWorker.kt").readText()
-    assertTrue(worker.contains("fun notificationId(appId: String): Int"))
+    assertTrue(worker.contains("fun notificationId(packageName: String): Int"))
     assertTrue(worker.contains("NOTIFICATION_ID_BASE +"))
     assertFalse("one shared id would let parallel downloads overwrite each other", worker.contains("NOTIFICATION_ID,"))
   }
@@ -58,9 +58,19 @@ class UpdateBatchTest {
   fun headerShowsThePlannerCountAndEnqueuesTheSameList() {
     val main = File(root, "app/src/main/java/app/hermes/updater/MainActivity.kt").readText()
     assertTrue(main.contains("val pending = UpdatePlanner.pending(rows)"))
-    assertTrue(main.contains("DownloadWorker.enqueueAll(applicationContext, batch.map { it.app.id })"))
+    assertTrue(main.contains("DownloadWorker.enqueueAll(applicationContext, batch.map { it.app.packageName })"))
     assertTrue(main.contains("\"Update all (\${pending.size})\""))
     assertTrue(main.contains("\"Updating \${pending.size}…\""))
+  }
+
+    @Test
+  fun installsAreSerializedAndFailedInstallsAreRetried() {
+    val worker = File(root, "app/src/main/java/app/hermes/updater/DownloadWorker.kt").readText()
+    assertTrue(worker.contains("InstallCoordinator.withInstallGate"))
+    assertTrue(worker.contains("InstallRetry.shouldRetry(phase, installAttempt)"))
+    assertTrue(worker.contains("CheckRetry.latestRelease(client, app)"))
+    val notifier = File(root, "app/src/main/java/app/hermes/updater/UpdateNotifier.kt").readText()
+    assertTrue(notifier.contains("RetryInstallReceiver.EXTRA_PACKAGE_NAME"))
   }
 
   @Test

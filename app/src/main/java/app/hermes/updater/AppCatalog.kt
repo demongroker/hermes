@@ -95,3 +95,9 @@ object AppCatalog {
 
   fun byPackage(packageName: String): CatalogApp? = apps.firstOrNull { it.packageName == packageName }
 }
+
+
+/** Lookups used by the install gate and notifications; the package name is the canonical key. */
+fun catalogById(id: String): CatalogApp? = AppCatalog.apps.firstOrNull { it.id == id }
+fun catalogByPackage(packageName: String): CatalogApp? =
+  AppCatalog.apps.firstOrNull { it.packageName == packageName }

@@ -54,7 +54,18 @@ class UpdateFlow(
    *         false when the network dropped mid-download and the caller should ask WorkManager
    *         to run again — the `.part` file is deliberately kept so the retry resumes.
    */
-  suspend fun run(app: CatalogApp, release: LatestRelease, onState: (FlowState) -> Unit): Boolean {
+  suspend fun run(
+    app: CatalogApp,
+    release: LatestRelease,
+    onState: (FlowState) -> Unit,
+    install: suspend (File) -> InstallPhase = { dest ->
+      InstallCoordinator.begin(app.packageName)
+      if (!installer.install(app.packageName, dest)) {
+        InstallCoordinator.apply(app.packageName, InstallEvent.Failed)
+        InstallPhase.FAILED
+      } else InstallPhase.OPENING
+    },
+  ): Boolean {
     if (!busy.compareAndSet(false, true)) {
       onState(FlowState.Failed("Another download is already running."))
       return true
@@ -87,15 +98,14 @@ class UpdateFlow(
           onState(FlowState.Installing)
           // Record the hand-off: from here the installer's own result (or the timeout
           // fallback) decides what the card shows next.
-          InstallCoordinator.begin(app.id)
-          if (!installer.install(app.id, dest)) {
-            val message = if (!installer.canInstallApps()) {
+          val phase = install(dest)
+          if (phase != InstallPhase.SUCCEEDED) {
+            val message = if (!installer.canInstallApps() && phase == InstallPhase.FAILED) {
               "Allow \"install unknown apps\" for Hermes, then try again."
             } else {
-              "Could not open the system installer."
+              InstallStateMachine.message(phase) ?: "Install failed"
             }
             onState(FlowState.Failed(message))
-            InstallCoordinator.apply(app.id, InstallEvent.Failed)
           }
         }
       }

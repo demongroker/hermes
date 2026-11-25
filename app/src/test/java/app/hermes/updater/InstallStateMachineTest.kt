@@ -79,11 +79,12 @@ class InstallStateMachineTest {
     val cancelled = InstallStateMachine.flowState(InstallPhase.CANCELLED)
     assertTrue(cancelled is FlowState.Failed)
     assertEquals("Install cancelled", (cancelled as FlowState.Failed).message)
-    // A3: the timeout resets the card to a plain Install button, reason kept for the snackbar.
+    // After the automatic retry is spent the card offers a tappable retry.
     val timedOut = InstallStateMachine.flowState(InstallPhase.TIMED_OUT)
-    assertTrue(timedOut is FlowState.Idle)
+    assertTrue(timedOut is FlowState.Failed)
+    assertEquals(InstallRetry.TAP_TO_RETRY, (timedOut as FlowState.Failed).message)
     assertEquals(
-      "Install didn't finish — tap Install to try again",
+      InstallRetry.TAP_TO_RETRY,
       InstallStateMachine.message(InstallPhase.TIMED_OUT),
     )
     assertNull(InstallStateMachine.message(InstallPhase.SUCCEEDED))

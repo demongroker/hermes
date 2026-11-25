@@ -40,7 +40,7 @@ object UpdateNotifier {
   }.getOrDefault(false)
 
   /** "<App> <version> ready — tap to install"; tapping reopens the system installer. */
-  fun ready(ctx: Context, appId: String, name: String, version: String, apk: File?) {
+  fun ready(ctx: Context, packageName: String, name: String, version: String, apk: File?) {
     if (!enabled(ctx)) return
     ensureChannel(ctx)
     val tap = apk?.takeIf { it.exists() }?.let { file ->
@@ -50,28 +50,45 @@ object UpdateNotifier {
           setDataAndType(uri, "application/vnd.android.package-archive")
           addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        PendingIntent.getActivity(ctx, appId.hashCode(), intent, pendingFlags())
+        PendingIntent.getActivity(ctx, DownloadWorker.notificationId(packageName), intent, pendingFlags())
       }.getOrNull()
     }
     post(
       ctx,
-      appId.hashCode(),
+      DownloadWorker.notificationId(packageName),
       "$name $version ready — tap to install",
       "Hermes verified the checksum and the signing certificate.",
       tap,
     )
   }
 
-  fun updated(ctx: Context, appId: String, name: String, version: String) {
+  fun updated(ctx: Context, packageName: String, name: String, version: String) {
     if (!enabled(ctx)) return
     ensureChannel(ctx)
-    post(ctx, appId.hashCode(), "$name updated to $version", "Installed from its signed release.", null)
+    post(ctx, DownloadWorker.notificationId(packageName), "$name updated to $version", "Installed from its signed release.", null)
   }
 
-  fun failed(ctx: Context, appId: String, name: String, reason: String) {
+  fun failed(ctx: Context, packageName: String, name: String, reason: String, retry: Boolean = false) {
     if (!enabled(ctx)) return
     ensureChannel(ctx)
-    post(ctx, appId.hashCode(), "$name update failed", reason, null)
+    val id = DownloadWorker.notificationId(packageName)
+    val tap = if (retry) runCatching {
+      PendingIntent.getBroadcast(
+        ctx, id,
+        Intent(ctx, RetryInstallReceiver::class.java)
+          .setAction(RetryInstallReceiver.ACTION)
+          .putExtra(RetryInstallReceiver.EXTRA_PACKAGE_NAME, packageName),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+      )
+    }.getOrNull() else null
+    post(ctx, id, "$name update failed", reason, tap)
+  }
+
+  /** Clear every status notification for one package after its install succeeds. */
+  fun cancelForPackage(ctx: Context, packageName: String) {
+    runCatching {
+      NotificationManagerCompat.from(ctx).cancel(DownloadWorker.notificationId(packageName))
+    }
   }
 
   /** The daily background check's summary. */

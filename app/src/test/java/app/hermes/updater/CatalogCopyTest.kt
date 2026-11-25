@@ -3,6 +3,7 @@ package app.hermes.updater
 import app.hermes.updater.ui.CatalogCopy
 import app.hermes.updater.ui.Tone
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,11 +59,11 @@ class CatalogCopyTest {
   }
 
   @Test
-  fun waitingForNetworkIsWarnNotBadAndStillRunning() {
+  fun waitingForNetworkIsWarnButNeverKeepsWorkingOn() {
     val s = status(state = FlowState.WaitingForNetwork("Connection lost — will resume"))
     assertEquals("Connection lost — will resume", s.text)
     assertEquals(Tone.WARN, s.tone)
-    assertTrue(CatalogCopy.isRunning(FlowState.WaitingForNetwork("x")))
+    assertFalse(CatalogCopy.isRunning(FlowState.WaitingForNetwork("x")))
     assertNull(CatalogCopy.progressPercent(FlowState.WaitingForNetwork("x")))
   }
 
