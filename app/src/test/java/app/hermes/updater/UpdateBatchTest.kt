@@ -22,7 +22,7 @@ class UpdateBatchTest {
     assertTrue("the batch must enqueue the existing worker", worker.contains("fun enqueueAll("))
     assertTrue(
       "the whole batch goes as one work request, so installs cannot overlap",
-      worker.contains("enqueue(ctx, packageNames, BATCH_WORK_NAME)"),
+      worker.contains("enqueue(ctx, packageNames, BATCH_WORK_NAME, ExistingWorkPolicy.KEEP)"),
     )
     assertTrue(
       "the worker walks the list in order instead of fanning out",

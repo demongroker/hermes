@@ -78,7 +78,7 @@ class UpdateFlow(
       onState(FlowState.Downloading(-1))
       val result = client.download(release.apk.url, part, shouldStop) { pct -> onState(FlowState.Downloading(pct)) }
       if (result is DownloadResult.Cancelled) {
-        part.delete()
+        // Keep .part so tapping Update again resumes instead of restarting.
         onState(FlowState.Failed("Download cancelled"))
         return true
       }

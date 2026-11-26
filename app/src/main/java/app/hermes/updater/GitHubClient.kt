@@ -165,7 +165,7 @@ class GitHubClient(
       }
       DownloadResult.Ok
     } catch (e: DownloadCancelled) {
-      runCatching { dest.delete() }
+      // Keep the .part file: the next attempt resumes with Range from here.
       DownloadResult.Cancelled
     } catch (e: Throwable) {
       DownloadResult.Offline(e.javaClass.simpleName)

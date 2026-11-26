@@ -270,7 +270,7 @@ class DownloadWorker(
 
     /** Single-app path. Keeps the exact unique name the batch path uses per app. */
     fun enqueue(ctx: Context, packageName: String) {
-      enqueue(ctx, listOf(packageName), UpdatePlanner.workName(packageName))
+      enqueue(ctx, listOf(packageName), UpdatePlanner.workName(packageName), ExistingWorkPolicy.REPLACE)
     }
 
     /**
@@ -279,10 +279,10 @@ class DownloadWorker(
      */
     fun enqueueAll(ctx: Context, packageNames: List<String>) {
       if (packageNames.isEmpty()) return
-      enqueue(ctx, packageNames, BATCH_WORK_NAME)
+      enqueue(ctx, packageNames, BATCH_WORK_NAME, ExistingWorkPolicy.KEEP)
     }
 
-    private fun enqueue(ctx: Context, appIds: List<String>, uniqueName: String) {
+    private fun enqueue(ctx: Context, appIds: List<String>, uniqueName: String, policy: ExistingWorkPolicy) {
       val request = OneTimeWorkRequestBuilder<DownloadWorker>()
         .setInputData(
           Data.Builder().putStringArray(KEY_PACKAGE_NAMES, appIds.toTypedArray()).build(),
@@ -294,7 +294,7 @@ class DownloadWorker(
         )
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
         .build()
-      WorkManager.getInstance(ctx).enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
+      WorkManager.getInstance(ctx).enqueueUniqueWork(uniqueName, policy, request)
     }
 
     /** A distinct notification id per app. */
