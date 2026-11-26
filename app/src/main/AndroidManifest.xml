@@ -76,6 +76,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- The install-ready notification's Cancel action. -->
+        <receiver
+            android:name=".CancelInstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.hermes.updater.CANCEL_INSTALL" />
+            </intent-filter>
+        </receiver>
+
         <!-- The progress notification's Cancel action. -->
         <receiver
             android:name=".CancelDownloadReceiver"

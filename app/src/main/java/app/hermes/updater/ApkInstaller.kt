@@ -9,6 +9,7 @@ import android.os.Build
 import android.net.Uri
 import androidx.core.content.FileProvider
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.security.MessageDigest
 
 /** Installed version + signer of a catalog app. */
@@ -128,6 +129,7 @@ class ApkInstaller(private val context: Context) {
     val installer = context.packageManager.packageInstaller
     val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
     val sessionId = installer.createSession(params)
+    activeSessions[packageName] = sessionId
     val session = installer.openSession(sessionId)
     try {
       session.openWrite("apk", 0, file.length()).use { out ->
@@ -145,8 +147,29 @@ class ApkInstaller(private val context: Context) {
       )
       session.commit(pending.intentSender)
       return true
+    } catch (t: Throwable) {
+      activeSessions.remove(packageName)
+      runCatching { installer.abandonSession(sessionId) }
+      throw t
     } finally {
       session.close()
+    }
+  }
+
+  companion object {
+    /** PackageInstaller sessions still waiting for the owner's confirmation. */
+    private val activeSessions = ConcurrentHashMap<String, Int>()
+
+    fun cancelInstall(context: Context, packageName: String): Boolean {
+      val id = activeSessions.remove(packageName) ?: return false
+      return runCatching {
+        context.packageManager.packageInstaller.abandonSession(id)
+        true
+      }.getOrDefault(false)
+    }
+
+    fun clearSession(packageName: String) {
+      activeSessions.remove(packageName)
     }
   }
 

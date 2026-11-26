@@ -122,6 +122,7 @@ class InstallStatusReceiver : BroadcastReceiver() {
       }
       InstallCoordinator.notifyConfirmNeeded(context, packageName)
     }
+    ApkInstaller.clearSession(packageName)
     InstallCoordinator.apply(packageName, InstallStatus.eventFor(status))
   }
 

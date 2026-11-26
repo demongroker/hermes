@@ -24,6 +24,7 @@ object UpdateNotifier {
   const val CHANNEL_ID = "updates"
   const val CHANNEL_NAME = "Updates"
   const val SUMMARY_ID = 1
+  const val ACTION_CANCEL_INSTALL = "app.hermes.updater.CANCEL_INSTALL"
 
   fun ensureChannel(ctx: Context) {
     val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -53,12 +54,21 @@ object UpdateNotifier {
         PendingIntent.getActivity(ctx, DownloadWorker.notificationId(packageName), intent, pendingFlags())
       }.getOrNull()
     }
+    val cancel = PendingIntent.getBroadcast(
+      ctx,
+      DownloadWorker.notificationId(packageName) + 1000,
+      Intent(ctx, CancelInstallReceiver::class.java)
+        .setAction(ACTION_CANCEL_INSTALL)
+        .putExtra(DownloadWorker.EXTRA_PACKAGE_NAME, packageName),
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
     post(
       ctx,
       DownloadWorker.notificationId(packageName),
       "$name $version ready — tap to install",
       "Hermes verified the checksum and the signing certificate.",
       tap,
+      cancel,
     )
   }
 
@@ -104,6 +114,7 @@ object UpdateNotifier {
     title: String,
     text: String,
     tap: PendingIntent?,
+    action: PendingIntent? = null,
   ) {
     runCatching {
       val builder = NotificationCompat.Builder(ctx, CHANNEL_ID)
@@ -112,6 +123,7 @@ object UpdateNotifier {
         .setContentText(text)
         .setAutoCancel(true)
       tap?.let { builder.setContentIntent(it) }
+      action?.let { builder.addAction(android.R.drawable.ic_delete, "Cancel install", it) }
       NotificationManagerCompat.from(ctx).notify(id, builder.build())
     }
   }
