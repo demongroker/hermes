@@ -54,24 +54,16 @@ object InstallCoordinator {
       }
       val app = catalogByPackage(packageName)
       val text = "${app?.displayName ?: packageName}: tap to finish installing"
-      val pi = if (confirm != null) {
-        // A user tap is a foreground gesture, so Android allows this activity start.
-        android.app.PendingIntent.getActivity(
-          context,
-          packageName.hashCode(),
-          confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-          android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
-        )
-      } else {
-        android.app.PendingIntent.getBroadcast(
-          context,
-          packageName.hashCode(),
-          Intent(context, InstallStatusReceiver::class.java)
-            .setAction(InstallStatusReceiver.ACTION)
-            .putExtra(InstallStatusReceiver.EXTRA_PACKAGE_NAME, packageName),
-          android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
-        )
-      }
+      // Always launch a foreground activity on tap: a broadcast receiver cannot start the
+      // installer from the background on modern Android.
+      val pi = android.app.PendingIntent.getActivity(
+        context,
+        packageName.hashCode(),
+        Intent(context, InstallLaunchActivity::class.java)
+          .putExtra(InstallLaunchActivity.EXTRA_PACKAGE_NAME, packageName)
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+      )
       val notification = androidx.core.app.NotificationCompat.Builder(context, "install_confirm")
         .setSmallIcon(android.R.drawable.stat_sys_download_done)
         .setContentTitle("Install ready")

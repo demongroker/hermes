@@ -76,6 +76,11 @@
             </intent-filter>
         </receiver>
 
+        <activity
+            android:name=".InstallLaunchActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
         <!-- The install-ready notification's Cancel action. -->
         <receiver
             android:name=".CancelInstallReceiver"
