@@ -25,6 +25,9 @@ sealed interface DownloadResult {
 
   /** The URL itself was refused (anything but https). */
   data class Rejected(val reason: String) : DownloadResult
+
+  /** The owner cancelled the download. */
+  data object Cancelled : DownloadResult
 }
 
 /** True when the failure is a network problem that a retry may fix. */
@@ -122,7 +125,14 @@ class GitHubClient(
    * `Range: bytes=<done>-`. A `206` means the server honoured it and the body is appended; a `200`
    * means it did not, so the file is truncated and restarted — appending there would corrupt it.
    */
-  fun download(url: String, dest: java.io.File, onProgress: (Int) -> Unit): DownloadResult {
+  private class DownloadCancelled : Exception()
+
+  fun download(
+    url: String,
+    dest: java.io.File,
+    shouldStop: () -> Boolean = { false },
+    onProgress: (Int) -> Unit,
+  ): DownloadResult {
     if (!url.startsWith("https://")) return DownloadResult.Rejected("not an https URL")
     val resumeFrom = if (dest.exists()) dest.length() else 0L
     val conn = connectionFactory(url)
@@ -144,6 +154,7 @@ class GitHubClient(
           val buffer = ByteArray(1 shl 16)
           var done = if (append) resumeFrom else 0L
           while (true) {
+            if (shouldStop()) throw DownloadCancelled()
             val read = input.read(buffer)
             if (read <= 0) break
             out.write(buffer, 0, read)
@@ -153,6 +164,9 @@ class GitHubClient(
         }
       }
       DownloadResult.Ok
+    } catch (e: DownloadCancelled) {
+      runCatching { dest.delete() }
+      DownloadResult.Cancelled
     } catch (e: Throwable) {
       DownloadResult.Offline(e.javaClass.simpleName)
     } finally {

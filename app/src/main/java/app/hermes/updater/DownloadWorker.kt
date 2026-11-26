@@ -75,9 +75,10 @@ class DownloadWorker(
     appId: String,
   ): Boolean {
     val app = catalogById(appId) ?: catalogByPackage(appId) ?: return false
-    // The package name is the canonical key for jobs, states and notifications: a
-    // concurrent worker can never borrow another app's name or version.
+    // The package name is the canonical key for jobs and notifications; app.id is the
+    // canonical key for UI state.
     val pkg = app.packageName
+    cancelled.remove(app.id)
     var tag = ""
     publish(app.id, FlowState.Downloading(-1))
 
@@ -124,7 +125,12 @@ class DownloadWorker(
         tag = release.tag
 
         var finalPhase = InstallPhase.IDLE
-        val done = UpdateFlow(ctx, client, installer).run(app, release, { publish(app.id, it) }) { dest ->
+        val done = UpdateFlow(ctx, client, installer).run(
+          app,
+          release,
+          { publish(app.id, it) },
+          { isStopped || cancelled.contains(app.id) },
+        ) { dest ->
           // Downloads may run in parallel; only the installer hand-off and its result wait
           // are serialized, so Android never sees two concurrent install confirmations.
           InstallCoordinator.withInstallGate {
@@ -253,6 +259,7 @@ class DownloadWorker(
     private const val ATTEMPT_WAIT_MS = 5 * 60 * 1000L
     private const val MAX_ATTEMPTS = 3
 
+    private val cancelled = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private const val CHANNEL = "updates"
     private const val BATCH_WORK_NAME = "hermes-download-batch"
     private const val NOTIFICATION_ID_BASE = 7
@@ -298,6 +305,8 @@ class DownloadWorker(
 
     /** Cancel a running download and clear its card state. */
     fun cancel(ctx: Context, packageName: String) {
+      val app = catalogByPackage(packageName)
+      if (app != null) cancelled.add(app.id)
       val wm = WorkManager.getInstance(ctx)
       wm.cancelUniqueWork(UpdatePlanner.workName(packageName))
       // The batch worker has one shared name; cancelling it stops every app in that batch.

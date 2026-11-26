@@ -58,6 +58,7 @@ class UpdateFlow(
     app: CatalogApp,
     release: LatestRelease,
     onState: (FlowState) -> Unit,
+    shouldStop: () -> Boolean = { false },
     install: suspend (File) -> InstallPhase = { dest ->
       InstallCoordinator.begin(app.packageName)
       if (!installer.install(app.packageName, dest)) {
@@ -75,7 +76,12 @@ class UpdateFlow(
     val part = File(dir, "${dest.name}.part")
     try {
       onState(FlowState.Downloading(-1))
-      val result = client.download(release.apk.url, part) { pct -> onState(FlowState.Downloading(pct)) }
+      val result = client.download(release.apk.url, part, shouldStop) { pct -> onState(FlowState.Downloading(pct)) }
+      if (result is DownloadResult.Cancelled) {
+        part.delete()
+        onState(FlowState.Failed("Download cancelled"))
+        return true
+      }
       if (result !is DownloadResult.Ok) {
         if (result.transient) {
           // Keep the partial file: the next attempt sends Range: bytes=<done>- and resumes.
@@ -125,6 +131,7 @@ class UpdateFlow(
     is DownloadResult.HttpError -> "Download failed (HTTP ${result.code}) — try again."
     is DownloadResult.Rejected -> "Download refused: ${result.reason}."
     is DownloadResult.Offline -> "Download failed — check the connection and try again."
+    DownloadResult.Cancelled -> "Download cancelled."
     DownloadResult.Ok -> "Download failed — check the connection and try again."
   }
 
