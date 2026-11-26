@@ -40,7 +40,7 @@ object InstallCoordinator {
    * High-priority "tap to install" heads-up while the system confirm dialog is up, so the
    * owner doesn't miss it if Hermes is backgrounded.
    */
-  fun notifyConfirmNeeded(context: Context, packageName: String) {
+  fun notifyConfirmNeeded(context: Context, packageName: String, confirm: Intent? = null) {
     runCatching {
       val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -54,20 +54,31 @@ object InstallCoordinator {
       }
       val app = catalogByPackage(packageName)
       val text = "${app?.displayName ?: packageName}: tap to finish installing"
-      val pi = android.app.PendingIntent.getBroadcast(
-        context,
-        packageName.hashCode(),
-        Intent(context, InstallStatusReceiver::class.java)
-          .setAction(InstallStatusReceiver.ACTION)
-          .putExtra(InstallStatusReceiver.EXTRA_PACKAGE_NAME, packageName),
-        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
-      )
+      val pi = if (confirm != null) {
+        // A user tap is a foreground gesture, so Android allows this activity start.
+        android.app.PendingIntent.getActivity(
+          context,
+          packageName.hashCode(),
+          confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+          android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+      } else {
+        android.app.PendingIntent.getBroadcast(
+          context,
+          packageName.hashCode(),
+          Intent(context, InstallStatusReceiver::class.java)
+            .setAction(InstallStatusReceiver.ACTION)
+            .putExtra(InstallStatusReceiver.EXTRA_PACKAGE_NAME, packageName),
+          android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
+        )
+      }
       val notification = androidx.core.app.NotificationCompat.Builder(context, "install_confirm")
         .setSmallIcon(android.R.drawable.stat_sys_download_done)
         .setContentTitle("Install ready")
         .setContentText(text)
         .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
         .setContentIntent(pi)
+        .addAction(android.R.drawable.stat_sys_download_done, "Install", pi)
         .setAutoCancel(true)
         .build()
       nm.notify(packageName.hashCode(), notification)
@@ -120,7 +131,7 @@ class InstallStatusReceiver : BroadcastReceiver() {
         confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(confirm) }
       }
-      InstallCoordinator.notifyConfirmNeeded(context, packageName)
+      InstallCoordinator.notifyConfirmNeeded(context, packageName, confirm)
     }
     ApkInstaller.clearSession(packageName)
     InstallCoordinator.apply(packageName, InstallStatus.eventFor(status))
