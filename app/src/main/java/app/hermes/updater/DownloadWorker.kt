@@ -1,6 +1,8 @@
 package app.hermes.updater
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -205,6 +207,16 @@ class DownloadWorker(
         description = "Download and install progress"
       },
     )
+    val cancelIntent = Intent(ctx, CancelDownloadReceiver::class.java).apply {
+      action = ACTION_CANCEL_DOWNLOAD
+      putExtra(EXTRA_PACKAGE_NAME, appId)
+    }
+    val cancel = PendingIntent.getBroadcast(
+      ctx,
+      notificationId(appId),
+      cancelIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
     val builder = NotificationCompat.Builder(ctx, CHANNEL)
       .setSmallIcon(android.R.drawable.stat_sys_download)
       .setContentTitle(name)
@@ -212,6 +224,7 @@ class DownloadWorker(
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setProgress(100, pct.coerceIn(0, 100), pct < 0)
+      .addAction(android.R.drawable.ic_delete, "Cancel", cancel)
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       ForegroundInfo(notificationId(appId), builder.build(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     } else {
@@ -229,6 +242,9 @@ class DownloadWorker(
     // Legacy keys are read only, for work queued by an older build.
     const val KEY_APP_ID = "app_id"
     const val KEY_APP_IDS = "app_ids"
+
+    const val ACTION_CANCEL_DOWNLOAD = "app.hermes.updater.CANCEL_DOWNLOAD"
+    const val EXTRA_PACKAGE_NAME = "package_name"
 
     /** Matches the worker's own backoff; the UI copy just says what is happening. */
     private const val WAITING_MESSAGE = "Connection lost — resuming when it is back"
@@ -278,6 +294,15 @@ class DownloadWorker(
     fun notificationId(packageName: String): Int {
       val index = AppCatalog.apps.indexOfFirst { it.packageName == packageName }
       return NOTIFICATION_ID_BASE + if (index >= 0) index else packageName.hashCode().mod(1000)
+    }
+
+    /** Cancel a running download and clear its card state. */
+    fun cancel(ctx: Context, packageName: String) {
+      val wm = WorkManager.getInstance(ctx)
+      wm.cancelUniqueWork(UpdatePlanner.workName(packageName))
+      // The batch worker has one shared name; cancelling it stops every app in that batch.
+      wm.cancelUniqueWork(BATCH_WORK_NAME)
+      clear(packageName)
     }
 
     /** Clear one stale state (e.g. a check that failed while a card looked busy). */

@@ -221,6 +221,11 @@ class MainActivity : ComponentActivity() {
       }
     }
 
+    fun onCancelTap(row: UpdateRow) {
+      DownloadWorker.cancel(applicationContext, row.app.packageName)
+      Toast.makeText(this@MainActivity, "Download cancelled", Toast.LENGTH_SHORT).show()
+    }
+
     fun onUpdateTap(row: UpdateRow) {
       val unmetered = isUnmetered(this)
       if (NetworkPolicy.decide(unmetered) == NetworkDecision.ASK_FIRST) {
@@ -469,11 +474,20 @@ class MainActivity : ComponentActivity() {
                 // The card's one primary action as a compact pill. While the bytes are moving
                 // the pill is replaced by the live percent, so the row never grows for it.
                 if (downloading) {
-                  Text(
-                    pct?.let { "$it%" } ?: "…",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                  )
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                      pct?.let { "$it%" } ?: "…",
+                      style = MaterialTheme.typography.labelMedium,
+                      color = MaterialTheme.colorScheme.primary,
+                    )
+                    TextButton(
+                      onClick = { onCancelTap(row) },
+                      modifier = Modifier.height(32.dp),
+                      contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    ) {
+                      Text("Cancel", style = MaterialTheme.typography.labelSmall)
+                    }
+                  }
                 } else if (action != null) {
                   Button(
                     onClick = { onUpdateTap(row) },
