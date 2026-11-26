@@ -12,8 +12,8 @@ android {
     applicationId = "app.hermes.updater"
     minSdk = 26
     targetSdk = 36
-    versionCode = 30
-    versionName = "0.1.29"
+    versionCode = 31
+    versionName = "0.1.30"
   }
 
   buildFeatures {

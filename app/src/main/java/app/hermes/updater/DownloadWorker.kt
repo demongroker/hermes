@@ -97,7 +97,7 @@ class DownloadWorker(
               pkg,
               app.displayName,
               tag.removePrefix("v"),
-              apkFile(pkg, tag),
+              apkFile(app.id, tag),
             )
             "Opening the installer for ${app.displayName}"
           }

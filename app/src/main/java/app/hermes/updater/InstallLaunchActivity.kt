@@ -11,9 +11,10 @@ class InstallLaunchActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
-    val apk = packageName?.let { pkg ->
+    val appId = packageName?.let { catalogByPackage(it)?.id ?: it }
+    val apk = appId?.let { id ->
       File(cacheDir, "updates").listFiles { f ->
-        f.name.startsWith("$pkg-") && f.name.endsWith(".apk")
+        f.name.startsWith("$id-") && f.name.endsWith(".apk")
       }?.maxByOrNull { it.lastModified() }
     }
     val opened = apk != null && ApkInstaller(this).installManually(apk)
