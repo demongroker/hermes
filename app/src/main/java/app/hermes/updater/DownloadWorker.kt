@@ -79,14 +79,14 @@ class DownloadWorker(
     // concurrent worker can never borrow another app's name or version.
     val pkg = app.packageName
     var tag = ""
-    publish(pkg, FlowState.Downloading(-1))
+    publish(app.id, FlowState.Downloading(-1))
 
     // Drives the foreground progress notification from the shared state flow. Deliberately NOT
     // `coroutineScope { launch { ... } }`: coroutineScope waits for its children, and a
     // never-completing `states.collect` would block doWork forever.
     val notifier = GlobalScope.launch {
       states.collect { map ->
-        val st = map[pkg] ?: return@collect
+        val st = map[app.id] ?: return@collect
         val text = when (st) {
           is FlowState.Downloading -> "Downloading ${app.displayName}"
           FlowState.Verifying -> "Verifying ${app.displayName}"
@@ -117,14 +117,14 @@ class DownloadWorker(
         val result = CheckRetry.latestRelease(client, app)
         if (!CheckRetry.canStartDownload(result)) {
           // Real error text on the card; the retry policy above already tried the check.
-          publish(pkg, FlowState.Failed(result.message))
+          publish(app.id, FlowState.Failed(result.message))
           return false
         }
         val release = (result as ReleaseResult.Ok).release
         tag = release.tag
 
         var finalPhase = InstallPhase.IDLE
-        val done = UpdateFlow(ctx, client, installer).run(app, release, { publish(pkg, it) }) { dest ->
+        val done = UpdateFlow(ctx, client, installer).run(app, release, { publish(app.id, it) }) { dest ->
           // Downloads may run in parallel; only the installer hand-off and its result wait
           // are serialized, so Android never sees two concurrent install confirmations.
           InstallCoordinator.withInstallGate {
@@ -149,7 +149,7 @@ class DownloadWorker(
         }
         if (!done) {
           // Dropped mid-download: keep the partial file and let WorkManager resume it.
-          publish(pkg, FlowState.WaitingForNetwork(WAITING_MESSAGE))
+          publish(app.id, FlowState.WaitingForNetwork(WAITING_MESSAGE))
           if (!NetworkWaiter.awaitOnline(ctx, ATTEMPT_WAIT_MS)) return false
           continue
         }
@@ -174,13 +174,13 @@ class DownloadWorker(
       InstallPhase.SUCCEEDED -> {
         UpdateNotifier.cancelForPackage(ctx, pkg)
         UpdateNotifier.updated(ctx, pkg, app.displayName, version)
-        publish(pkg, FlowState.Idle)
+        publish(app.id, FlowState.Idle)
         InstallCoordinator.clear(pkg)
         true
       }
       InstallPhase.CANCELLED -> {
         UpdateNotifier.failed(ctx, pkg, app.displayName, "Install cancelled", retry = false)
-        publish(pkg, FlowState.Failed("Install cancelled"))
+        publish(app.id, FlowState.Failed("Install cancelled"))
         InstallCoordinator.clear(pkg)
         true
       }
@@ -188,7 +188,7 @@ class DownloadWorker(
         // The single automatic retry already ran inside the install gate. The notification
         // and the card now offer a manual retry keyed by this package.
         UpdateNotifier.failed(ctx, pkg, app.displayName, message, retry = true)
-        publish(pkg, FlowState.Failed(message))
+        publish(app.id, FlowState.Failed(message))
         InstallCoordinator.clear(pkg)
         true
       }
@@ -302,7 +302,7 @@ class DownloadWorker(
       wm.cancelUniqueWork(UpdatePlanner.workName(packageName))
       // The batch worker has one shared name; cancelling it stops every app in that batch.
       wm.cancelUniqueWork(BATCH_WORK_NAME)
-      clear(packageName)
+      clear(catalogByPackage(packageName)?.id ?: packageName)
     }
 
     /** Clear one stale state (e.g. a check that failed while a card looked busy). */
